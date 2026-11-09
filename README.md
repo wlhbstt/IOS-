@@ -1,6 +1,6 @@
 # IOS- / 相册整理 PhotoCleaner
 
-面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。当前交付为源码与构建配置；尚未运行云端 Xcode 编译，也未在该设备上安装验收。
+面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。已通过云端 Xcode 16.4 / iPhoneOS SDK 18.5 编译并生成未签名 IPA；尚未在该设备上安装验收。
 
 ## 已实现的范围
 
@@ -14,7 +14,7 @@
 
 按 [Windows 安装说明](docs/INSTALL-WINDOWS.md) 在 GitHub macOS runner 编译，再在自己的 Windows 电脑用 Sideloadly 签名安装。GitHub 不需要 Apple 账号、密码或签名证书；未签名 IPA 不能直接安装到 iPhone。
 
-免费 Apple 账号需要周期续签。云端任务尚未执行，仓库尚未上传；构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
+免费 Apple 账号需要周期续签。源码位于 `codex/initial-app` 分支；[已验证构建与安装包](https://github.com/wlhbstt/IOS-/actions/runs/42593273529)见该任务的 Artifacts。构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
 
 ## 验证与构建
 

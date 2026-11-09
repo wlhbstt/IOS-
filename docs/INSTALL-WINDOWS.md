@@ -1,11 +1,11 @@
 # Windows 编译与安装
 
-适用目标：Windows 电脑、iPhone 15 Pro / iOS 18.5、免费 Apple 账号。Windows 不能本地执行 Xcode 编译，本项目采用 GitHub 托管 macOS 编译与 Windows 本地签名的流程。尚未执行云端构建或真机安装，以下步骤需实际验证。
+适用目标：Windows 电脑、iPhone 15 Pro / iOS 18.5、免费 Apple 账号。Windows 不能本地执行 Xcode 编译，本项目采用 GitHub 托管 macOS 编译与 Windows 本地签名的流程。云端构建与 IPA 检查已通过；本地签名和真机安装仍需实际验证。
 
 ## 1. 获取云端未签名 IPA
 
-1. 在自己的 GitHub 账号创建仓库，将本项目源码上传；不要上传照片、缓存、Apple 密码、证书或描述文件。
-2. 在仓库 Actions 中启用工作流，选择 `iOS unsigned build`，点击 `Run workflow`。push 和 PR 也会运行。
+1. 当前代码已上传到 [仓库的功能分支](https://github.com/wlhbstt/IOS-/tree/codex/initial-app)。可直接打开 [成功构建](https://github.com/wlhbstt/IOS-/actions/runs/42593273529) 获取安装包；不要上传照片、缓存、Apple 密码、证书或描述文件。
+2. 需要重新生成时，在该分支推送修改即可触发 `iOS unsigned build`。也可在已有运行上选择 `Re-run all jobs`；当前工作流尚未合入默认分支，可能不显示 `Run workflow` 按钮。
 3. 等待任务完整成功。日志应包含核心测试、Xcode 版本与 SDK、真机 Release 编译和 IPA 检查。失败时查看首个报错；失败任务不会发布 IPA。
 4. 在成功任务的 Artifacts 中下载 `PhotoCleaner-unsigned-<运行号>`，解压外层 ZIP，得到 `PhotoCleaner-unsigned.ipa`。产物保留 7 天，过期可重新构建。
 

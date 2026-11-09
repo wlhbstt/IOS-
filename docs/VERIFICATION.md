@@ -13,8 +13,9 @@
 
 ## 集成与设备状态
 
-- GitHub macOS 构建：准备运行，尚无成功证据。
-- 未签名 IPA：尚未生成。
+- GitHub macOS 构建：[运行 42593273529](https://github.com/wlhbstt/IOS-/actions/runs/42593273529) 成功，代码提交 `d1846e3`；Xcode 16.4、iPhoneOS SDK 18.5，16 项 XCTest 通过，Release 真机编译成功。
+- 未签名 IPA：已生成，arm64、Info.plist、ZIP 完整性及 Payload 路径检查通过；artifact 为 `PhotoCleaner-unsigned-2`。已下载到本机 `build/download-42593273529/PhotoCleaner-unsigned-2/PhotoCleaner-unsigned.ipa`。
+- 首次运行 42592528876 的 App 编译成功，但打包脚本的 `lipo` 参数顺序错误导致任务失败；已修正输入文件位置，第二次运行验证通过。
 - Windows 签名、iPhone 安装、免费账号续签：尚未执行。
 - 真机 UI、PhotoKit 回调、iCloud、识别效果与几万张图库性能：尚未执行。
 
