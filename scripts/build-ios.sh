@@ -45,7 +45,7 @@ case "$executable" in
 esac
 test -s "$app/$executable"
 test -x "$app/$executable"
-xcrun lipo -verify_arch arm64 "$app/$executable"
+xcrun lipo "$app/$executable" -verify_arch arm64
 platform="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")"
 test "$platform" = iPhoneOS
 
