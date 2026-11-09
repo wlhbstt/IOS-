@@ -1,0 +1,39 @@
+name: iOS unsigned build
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check project inputs
+        run: |
+          node scripts/validate-project.mjs
+          bash -n scripts/build-ios.sh
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Test core and build unsigned device IPA
+        run: bash scripts/build-ios.sh
+      - name: Upload unsigned IPA for local signing
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCleaner-unsigned-${{ github.run_number }}
+          path: build/PhotoCleaner-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

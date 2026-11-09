@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_dir"
+if [ "$(uname -s)" != Darwin ]; then
+    echo "iOS compilation requires macOS and Xcode. Use GitHub Actions from Windows." >&2
+    exit 1
+fi
+for tool in xcodebuild xcrun xcodegen swift ditto unzip; do
+    command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }
+done
+
+xcodebuild -version
+sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+if ! awk -v sdk="$sdk_version" 'BEGIN { exit !(sdk + 0 >= 18) }'; then
+    echo "An iPhoneOS SDK >= 18.0 is required; selected SDK: $sdk_version" >&2
+    exit 1
+fi
+echo "Selected iPhoneOS SDK: $sdk_version; deployment target: iOS 18.0"
+
+mkdir -p "$repo_dir/build"
+output="$repo_dir/build/PhotoCleaner-unsigned.ipa"
+rm -f "$output"
+run_dir="$(mktemp -d "$repo_dir/build/ios.XXXXXX")"
+trap 'rm -rf "$run_dir"' EXIT
+
+echo "Running PhotoCleanerCore tests"
+swift test
+echo "Generating Xcode project"
+xcodegen generate --spec project.yml
+echo "Building Release for a generic iOS device without signing"
+xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
+    -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+    -derivedDataPath "$run_dir/DerivedData" \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+app="$run_dir/DerivedData/Build/Products/Release-iphoneos/PhotoCleaner.app"
+test -d "$app"
+test -f "$app/Info.plist"
+plutil -lint "$app/Info.plist"
+executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+case "$executable" in
+    ''|*/*|.|..) echo "Invalid CFBundleExecutable: $executable" >&2; exit 1 ;;
+esac
+test -s "$app/$executable"
+test -x "$app/$executable"
+xcrun lipo -verify_arch arm64 "$app/$executable"
+platform="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")"
+test "$platform" = iPhoneOS
+
+mkdir "$run_dir/Payload"
+ditto "$app" "$run_dir/Payload/PhotoCleaner.app"
+archive="$run_dir/PhotoCleaner-unsigned.ipa"
+ditto -c -k --keepParent "$run_dir/Payload" "$archive"
+test -s "$archive"
+unzip -t "$archive"
+unzip -Z1 "$archive" > "$run_dir/archive-entries.txt"
+grep -Fxq 'Payload/PhotoCleaner.app/Info.plist' "$run_dir/archive-entries.txt"
+grep -Fxq "Payload/PhotoCleaner.app/$executable" "$run_dir/archive-entries.txt"
+mv "$archive" "$output"
+echo "Unsigned device IPA verified: $output"
+echo "Local re-signing is required before installation; this does not prove iPhone operation."

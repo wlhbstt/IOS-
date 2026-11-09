@@ -1,0 +1,34 @@
+name: PhotoCleaner
+options:
+  bundleIdPrefix: com.localphototools
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  PhotoCleanerCore:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+targets:
+  PhotoCleaner:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: PhotoCleanerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.localphototools.PhotoCleaner
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Info.plist
+        SWIFT_EMIT_LOC_STRINGS: YES
+    scheme:
+      testTargets: []
