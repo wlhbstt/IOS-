@@ -80,6 +80,18 @@ struct LibraryControls: ViewModifier {
                     }
                     .padding().background(.bar)
                 }
+                if !library.selectedIDs.isEmpty {
+                    HStack {
+                        Button { review = true } label: { Image(systemName: "list.bullet") }
+                            .accessibilityLabel("预览待删清单")
+                        Spacer()
+                        Button("删除所选 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) {
+                            Task { await library.deleteSelected() }
+                        }
+                        .buttonStyle(.borderedProminent).tint(.red)
+                        .disabled(library.isDeleting || library.isReloading)
+                    }.padding().background(.bar)
+                }
             }
             .sheet(isPresented: $settings) { NavigationStack { SettingsView() } }
             .sheet(isPresented: $review) { NavigationStack { DeletionReviewView() } }
@@ -98,7 +110,9 @@ struct CleanupView: View {
                 LabeledContent("大小未知", value: "\(library.unknownSizeCount)")
                 if library.authorization == .limited { Label("当前为部分照片访问", systemImage: "lock.shield") }
                 if !library.isScanning {
-                    Button("扫描未完成项目", systemImage: "play.fill") { library.scan() }
+                    Button("快速分析照片", systemImage: "play.fill") { library.scan() }
+                        .disabled(library.isReloading || library.snapshot.isEmpty)
+                    Button("读取原件大小与完全重复", systemImage: "internaldrive") { library.scan(originals: true) }
                         .disabled(library.isReloading || library.snapshot.isEmpty)
                 }
             }
@@ -211,7 +225,10 @@ struct RecordBrowser: View {
             let request = MediaQuery(text: query, tag: tag, startDate: useDates ? from : nil, endDate: useDates ? to : nil)
             let order = sort, filterMode = mode
             let worker = Task.detached(priority: .userInitiated) {
-                MediaSorter.sorted(snapshot.filter { record in
+                var matches: [MediaRecord] = []
+                for record in snapshot {
+                    try Task.checkCancellation()
+                    let include: Bool = {
                     guard request.matches(record) else { return false }
                     switch filterMode {
                     case .all: return true
@@ -219,12 +236,17 @@ struct RecordBrowser: View {
                         record.tags.contains(where: { $0 == "验证码" || $0 == "物流" })
                     case .quality: return record.tags.contains(where: { $0 == "疑似模糊" || $0 == "疑似极暗" })
                     }
-                }, by: order)
+                    }()
+                    if include { matches.append(record) }
+                }
+                try Task.checkCancellation()
+                return MediaSorter.sorted(matches, by: order)
             }
-            let filtered = await worker.value
-            guard !Task.isCancelled else { return }
-            results = filtered
-            filtering = false
+            await withTaskCancellationHandler(operation: {
+                guard let filtered = try? await worker.value, !Task.isCancelled else { return }
+                results = filtered
+                filtering = false
+            }, onCancel: { worker.cancel() })
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
     }

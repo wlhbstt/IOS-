@@ -79,6 +79,19 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
         self.text = text
         self.analysisState = analysisState
     }
+
+    public func updatingMetadata(from metadata: MediaRecord) -> MediaRecord {
+        guard id == metadata.id, modifiedAt == metadata.modifiedAt, createdAt == metadata.createdAt,
+              filename == metadata.filename, width == metadata.width, height == metadata.height,
+              kind == metadata.kind, isComplex == metadata.isComplex, isLivePhoto == metadata.isLivePhoto else {
+            var fresh = metadata
+            fresh.customTags = customTags
+            return fresh
+        }
+        var refreshed = self
+        refreshed.isFavorite = metadata.isFavorite
+        return refreshed
+    }
 }
 
 public enum ResourceByteCounts {

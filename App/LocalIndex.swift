@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import PhotoCleanerCore
 
 actor LocalIndex {
@@ -10,9 +11,9 @@ actor LocalIndex {
     private let directory: URL
     private var pages: [Int: Page] = [:]
 
-    init() {
+    init(directory: URL? = nil) {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = base.appendingPathComponent("PhotoCleaner/Index", isDirectory: true)
+        self.directory = directory ?? base.appendingPathComponent("PhotoCleaner/Index", isDirectory: true)
     }
 
     func load() throws -> [String: MediaRecord] {
@@ -21,18 +22,31 @@ actor LocalIndex {
         let decoder = JSONDecoder()
         for url in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             where url.pathExtension == "json" {
-            let page = try decoder.decode(Page.self, from: Data(contentsOf: url))
+            var page = try decoder.decode(Page.self, from: Data(contentsOf: url))
             guard page.version == 1, let bucket = Int(url.deletingPathExtension().lastPathComponent) else { continue }
+            var migrated = false
+            for id in Array(page.records.keys) {
+                if let data = page.records[id]?.featurePrint {
+                    try storeFeature(data, id: id)
+                    page.records[id]?.featurePrint = nil
+                    migrated = true
+                }
+            }
             pages[bucket] = page
+            if migrated { try write([bucket]) }
         }
         return pages.values.reduce(into: [:]) { $0.merge($1.records, uniquingKeysWith: { _, new in new }) }
     }
 
     func upsert(_ records: [MediaRecord]) throws {
         var changed = Set<Int>()
+        try prepare()
         for record in records {
             let bucket = shard(record.id)
-            pages[bucket, default: Page()].records[record.id] = record
+            var compact = record
+            if let data = compact.featurePrint { try storeFeature(data, id: record.id) }
+            compact.featurePrint = nil
+            pages[bucket, default: Page()].records[record.id] = compact
             changed.insert(bucket)
         }
         try write(changed)
@@ -41,6 +55,10 @@ actor LocalIndex {
     func retain(ids: Set<String>) throws {
         var changed = Set<Int>()
         for bucket in Array(pages.keys) {
+            for id in pages[bucket]!.records.keys where !ids.contains(id) {
+                let url = featureURL(id)
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            }
             let filtered = pages[bucket]!.records.filter { ids.contains($0.key) }
             if filtered.count != pages[bucket]!.records.count {
                 pages[bucket]!.records = filtered
@@ -58,6 +76,19 @@ actor LocalIndex {
         try prepare()
     }
 
+    func featurePrint(id: String) -> Data? {
+        try? Data(contentsOf: featureURL(id))
+    }
+
+    private func featureURL(_ id: String) -> URL {
+        let name = SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("features", isDirectory: true).appendingPathComponent(name)
+    }
+
+    private func storeFeature(_ data: Data, id: String) throws {
+        try data.write(to: featureURL(id), options: [.atomic, .completeFileProtection])
+    }
+
     private func shard(_ id: String) -> Int {
         Int(id.utf8.reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 } % 128)
     }
@@ -65,6 +96,8 @@ actor LocalIndex {
     private func prepare() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.complete])
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("features", isDirectory: true),
+            withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
         var url = directory
         var values = URLResourceValues()
         values.isExcludedFromBackup = true

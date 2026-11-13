@@ -48,7 +48,7 @@ final class LibraryStore: ObservableObject {
     private var scanEpoch = UUID()
     private var changeTask: Task<Void, Never>?
     private var publicationGeneration = 0
-    private var matchingTask: Task<[DuplicateGroup], Error>?
+    private var matchingTask: Task<Void, Never>?
 
     init() {
         allowCloudDownload = UserDefaults.standard.bool(forKey: "allowCloudDownload")
@@ -78,7 +78,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func reload() async {
-        guard !isReloading else { return }
+        guard !isReloading, !isDeleting else { return }
         isReloading = true
         defer { isReloading = false }
         let running = scanTask
@@ -111,17 +111,7 @@ final class LibraryStore: ObservableObject {
             }
             var refreshed: [String: MediaRecord] = [:]
             for (_, metadata) in catalogue {
-                if var cached = records[metadata.id], cached.modifiedAt == metadata.modifiedAt,
-                   cached.width == metadata.width, cached.height == metadata.height,
-                   cached.isComplex == metadata.isComplex, cached.filename == metadata.filename {
-                    cached.createdAt = metadata.createdAt
-                    cached.isFavorite = metadata.isFavorite
-                    refreshed[metadata.id] = cached
-                } else {
-                    var fresh = metadata
-                    fresh.customTags = records[metadata.id]?.customTags ?? []
-                    refreshed[metadata.id] = fresh
-                }
+                refreshed[metadata.id] = records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata
             }
             if !selectedIDs.isEmpty {
                 do {
@@ -146,11 +136,13 @@ final class LibraryStore: ObservableObject {
         }
     }
 
-    func scan() {
+    func scan(originals: Bool = false) {
         guard hasAccess, !isReloading, scanTask == nil, !isDeleting else { return }
         let epoch = UUID()
         scanEpoch = epoch
-        let candidates = records.values.filter { $0.analysisState != .complete || $0.originalBytes == nil }
+        let candidates = records.values.filter {
+            originals ? $0.originalBytes == nil : ($0.kind == .image && $0.analysisState != .complete)
+        }
             .sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }.map(\.id)
         scanTotal = candidates.count
         processed = 0
@@ -158,42 +150,53 @@ final class LibraryStore: ObservableObject {
         let network = allowCloudDownload
         scanTask = Task {
             var pendingWrites: [MediaRecord] = []
+            var completed = 0
+            var lastUpdate = Date()
             for id in candidates {
                 guard !Task.isCancelled, self.scanEpoch == epoch, var record = self.records[id],
                       let asset = self.assetMap[id] else { break }
-                do {
-                    if record.originalBytes == nil {
+                if originals {
+                    do {
                         let summary = try await self.photos.originalSummary(asset: asset, network: network)
                         record.originalBytes = summary.bytes
                         record.digest = record.isComplex || record.isLivePhoto ? nil : summary.digest
+                    } catch is CancellationError { break }
+                    catch {
+                        record.originalBytes = nil
+                        record.digest = nil
                     }
-                } catch is CancellationError { break }
-                catch {
-                    record.originalBytes = nil
-                    record.digest = nil
                 }
                 guard !Task.isCancelled, self.scanEpoch == epoch else { break }
-                if record.kind == .image && record.analysisState != .complete {
+                if !originals && record.kind == .image && record.analysisState != .complete {
                     do {
-                        let image = try await self.photos.image(id: id, size: CGSize(width: 1280, height: 1280), network: network)
+                        let edge: CGFloat = record.isScreenshot ? 1280 : 1024
+                        let image = try await self.photos.image(id: id, size: CGSize(width: edge, height: edge), network: network)
                         record = try await self.analyzer.analyze(record, image: image)
                     } catch is CancellationError { break }
                     catch {
                         record.analysisState = .unavailable
                     }
-                } else if record.kind == .video {
+                } else if originals && record.kind == .video {
                     record.analysisState = record.originalBytes == nil ? .unavailable : .complete
                 }
                 guard !Task.isCancelled, self.scanEpoch == epoch else { break }
-                self.records[id] = record
                 pendingWrites.append(record)
-                self.processed += 1
-                if pendingWrites.count >= 24 {
+                record.featurePrint = nil
+                self.records[id] = record
+                completed += 1
+                if pendingWrites.count >= 64 {
                     do { try await self.index.upsert(pendingWrites) }
                     catch { self.notice = LibraryNotice(message: "扫描结果保存失败：\(error.localizedDescription)"); break }
                     pendingWrites.removeAll(keepingCapacity: true)
                 }
+                guard self.scanEpoch == epoch else { return }
+                if Date().timeIntervalSince(lastUpdate) >= 3 {
+                    self.processed = completed
+                    await self.publishSnapshot(rebuildGroups: false)
+                    lastUpdate = Date()
+                }
             }
+            guard self.scanEpoch == epoch else { return }
             // Saving the last small batch also makes a deliberate pause resumable.
             if !pendingWrites.isEmpty {
                 do { try await self.index.upsert(pendingWrites) }
@@ -202,6 +205,7 @@ final class LibraryStore: ObservableObject {
             guard self.scanEpoch == epoch else { return }
             self.isScanning = false
             self.scanTask = nil
+            self.processed = completed
             await self.publishSnapshot()
         }
     }
@@ -215,24 +219,16 @@ final class LibraryStore: ObservableObject {
         await publishSnapshot()
     }
 
-    private func publishSnapshot() async {
+    private func publishSnapshot(rebuildGroups: Bool = true) async {
         publicationGeneration += 1
         let generation = publicationGeneration
         let current = Array(records.values)
-        let exact = DuplicateFinder.exactGroups(current)
         matchingTask?.cancel()
-        let worker = Task.detached(priority: .utility) { [similarFinder] in
-            try await similarFinder.groups(in: current)
+        snapshot = current.map { record in
+            var display = record
+            display.featurePrint = nil
+            return display
         }
-        matchingTask = worker
-        let similar: [DuplicateGroup]
-        do { similar = try await worker.value }
-        catch { return }
-        guard generation == publicationGeneration else { return }
-        matchingTask = nil
-        exactGroups = exact
-        similarGroups = similar
-        snapshot = current
         analyzedCount = current.filter { $0.analysisState == .complete }.count
         pendingCount = current.count - analyzedCount
         unknownSizeCount = current.filter { $0.originalBytes == nil }.count
@@ -244,6 +240,20 @@ final class LibraryStore: ObservableObject {
             $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count
         }
         snapshotRevision += 1
+        guard rebuildGroups else { return }
+        let worker = Task.detached(priority: .utility) { [similarFinder, index] in
+            let exact = DuplicateFinder.exactGroups(current)
+            let similar = try await similarFinder.groups(in: current, index: index)
+            return (exact, similar)
+        }
+        matchingTask = Task {
+            await withTaskCancellationHandler(operation: {
+                guard let groups = try? await worker.value, !Task.isCancelled,
+                      generation == self.publicationGeneration else { return }
+                self.exactGroups = groups.0
+                self.similarGroups = groups.1
+            }, onCancel: { worker.cancel() })
+        }
     }
 
     func record(_ id: String) -> MediaRecord? { records[id] }
@@ -309,7 +319,6 @@ final class LibraryStore: ObservableObject {
         guard var record = records[id], !isScanning else { return }
         record.customTags = Array(Set(text.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == "\n" })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
-        record.tags = []
         records[id] = record
         do { try await index.upsert([record]); await publishSnapshot() }
         catch { notice = LibraryNotice(message: "保存标签失败：\(error.localizedDescription)") }
@@ -330,27 +339,44 @@ final class LibraryStore: ObservableObject {
     }
 
     func deleteSelected() async {
-        guard !isDeleting, !selectedIDs.isEmpty else { return }
-        let ids = selectedIDs
-        let reviewedGroups = exactGroups + similarGroups
-        let reviewedRecords = Array(records.values)
+        await delete(ids: selectedIDs)
+    }
+
+    func delete(ids: Set<String>) async {
+        guard !isDeleting, !isReloading, !ids.isEmpty else { return }
+        let reviewedGroups = (exactGroups + similarGroups).filter { $0.memberIDs.contains(where: ids.contains) }
+        let relevantIDs = ids.union(reviewedGroups.flatMap(\.memberIDs))
+        let reviewedRecords = relevantIDs.compactMap { records[$0] }
         isDeleting = true
         defer { isDeleting = false }
-        let task = scanTask
         pause()
-        await task?.value
-        while isReloading { await Task.yield() }
-        await reload()
+        scanEpoch = UUID()
+        scanTask = nil
+        isScanning = false
+        matchingTask?.cancel()
         do {
+            authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
             guard hasAccess else { throw PhotoAccessError.missing }
+            let current = await Task.detached(priority: .userInitiated) { [photos] in
+                photos.metadata(ids: relevantIDs)
+            }.value.map { metadata in records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata }
+            let protection = photos.protectedIDs(albumIDs: protectedAlbumIDs)
             try DeletionPolicy.validateUnchanged(selectedIDs: ids, reviewedRecords: reviewedRecords,
-                currentRecords: Array(records.values), groups: reviewedGroups)
-            try DeletionPolicy.validate(selectedIDs: ids, records: Array(records.values),
-                protectedIDs: protectedIDs, groups: reviewedGroups + exactGroups + similarGroups)
+                currentRecords: current, groups: reviewedGroups)
+            try DeletionPolicy.validate(selectedIDs: ids, records: current,
+                protectedIDs: protection, groups: reviewedGroups)
             try await photos.delete(ids: ids)
             selectedIDs.subtract(ids)
-            await reload()
-            notice = LibraryNotice(message: "已删除 \(ids.count) 个项目，可在系统相册的最近删除中检查或恢复。")
-        } catch { notice = LibraryNotice(message: "删除未完成：\(error.localizedDescription)") }
+            for id in ids { records.removeValue(forKey: id); assetMap.removeValue(forKey: id) }
+            exactGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
+            similarGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
+            await publishSnapshot()
+            do { try await index.retain(ids: Set(records.keys)) }
+            catch { notice = LibraryNotice(message: "照片已删除，但本机索引更新失败，请刷新相册。") }
+        } catch {
+            let failure = error as NSError
+            if failure.domain == PHPhotosErrorDomain && failure.code == PHPhotosError.Code.userCancelled.rawValue { return }
+            notice = LibraryNotice(message: "删除未完成：\(error.localizedDescription)\n\(failure.domain) / \(failure.code)")
+        }
     }
 }

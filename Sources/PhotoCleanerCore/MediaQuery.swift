@@ -27,16 +27,21 @@ public enum MediaSorter {
 }
 
 public struct MediaQuery: Sendable {
-    public var text: String
-    public var tag: String?
-    public var startDate: Date?
-    public var endDate: Date?
+    public let text: String
+    public let tag: String?
+    public let startDate: Date?
+    public let endDate: Date?
+    private let terms: [[String]]
 
     public init(text: String = "", tag: String? = nil, startDate: Date? = nil, endDate: Date? = nil) {
         self.text = text
         self.tag = tag
         self.startDate = startDate
         self.endDate = endDate
+        terms = text.split(whereSeparator: { $0.isWhitespace }).map {
+            let term = Self.folded(String($0))
+            return Self.aliases.first(where: { $0.contains(term) }) ?? [term]
+        }
     }
 
     public func matches(_ record: MediaRecord) -> Bool {
@@ -50,25 +55,36 @@ public struct MediaQuery: Sendable {
                   createdAt < nextDay else { return false }
         }
         let allTags = record.tags + record.customTags
-        if let tag, !tag.isEmpty, !allTags.contains(where: { folded($0) == folded(tag) }) {
+        if let tag, !tag.isEmpty, !allTags.contains(where: { Self.folded($0) == Self.folded(tag) }) {
             return false
         }
-        let terms = text.split(whereSeparator: { $0.isWhitespace })
         guard !terms.isEmpty else { return true }
-        var searchable = [record.filename, record.text] + allTags
+        var searchable = [record.filename, record.text.filter { !$0.isWhitespace }] + allTags
         if let createdAt = record.createdAt {
             var gregorian = Calendar(identifier: .gregorian)
             gregorian.timeZone = calendar.timeZone
             let date = gregorian.dateComponents([.year, .month, .day], from: createdAt)
             if let year = date.year, let month = date.month, let day = date.day {
                 searchable.append(String(format: "%04d-%02d-%02d", year, month, day))
+                searchable.append("\(year)/\(month)/\(day)")
+                searchable.append("\(year)年\(month)月\(day)日")
+                searchable.append(String(format: "%04d/%02d/%02d", year, month, day))
+                searchable.append(String(format: "%04d年%02d月%02d日", year, month, day))
+                searchable.append("\(year)-\(month)-\(day)")
             }
         }
-        let haystack = folded(searchable.joined(separator: "\n"))
-        return terms.allSatisfy { haystack.contains(folded(String($0))) }
+        let haystack = Self.folded(searchable.joined(separator: "\n"))
+        return terms.allSatisfy { alternatives in alternatives.contains(where: haystack.contains) }
     }
 
-    private func folded(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    private static let aliases = [
+        ["汽车", "车辆", "car"], ["人物", "人像", "自拍", "person"],
+        ["风景", "景色", "landscape"], ["美食", "食物", "food"],
+        ["截图", "截屏", "screenshot"], ["视频", "录像", "video"],
+        ["文档", "文件", "document"], ["实况", "实况照片", "livephoto"]
+    ]
+
+    private static func folded(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 }

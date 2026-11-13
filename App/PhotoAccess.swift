@@ -5,13 +5,14 @@ import UIKit
 import PhotoCleanerCore
 
 enum PhotoAccessError: LocalizedError {
-    case unavailable, missing, noResource
+    case unavailable, missing, noResource, cannotDelete
 
     var errorDescription: String? {
         switch self {
         case .unavailable: return "内容未存储在本机，或暂时无法读取。"
         case .missing: return "照片已删除或不再有访问权限。"
         case .noResource: return "未找到可读取的原始媒体文件。"
+        case .cannotDelete: return "部分照片不允许由 App 删除。请在系统照片中检查；电脑同步的照片需从电脑取消同步。"
         }
     }
 }
@@ -84,7 +85,7 @@ struct AlbumChoice: Identifiable {
 }
 
 final class PhotoAccess: @unchecked Sendable {
-    private let images = PHCachingImageManager()
+    private let images = PHImageManager()
 
     func assets() -> [PHAsset] {
         let options = PHFetchOptions()
@@ -99,6 +100,14 @@ final class PhotoAccess: @unchecked Sendable {
 
     func asset(_ id: String) -> PHAsset? {
         PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+    }
+
+    func metadata(ids: Set<String>) -> [MediaRecord] {
+        var records: [MediaRecord] = []
+        PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil).enumerateObjects { asset, _, _ in
+            records.append(self.metadata(asset))
+        }
+        return records
     }
 
     func metadata(_ asset: PHAsset) -> MediaRecord {
@@ -141,7 +150,7 @@ final class PhotoAccess: @unchecked Sendable {
         return result
     }
 
-    func image(id: String, size: CGSize, network: Bool = false) async throws -> UIImage {
+    func image(id: String, size: CGSize, network: Bool = false, thumbnail: Bool = false) async throws -> UIImage {
         guard let asset = asset(id) else { throw PhotoAccessError.missing }
         let state = PhotoRequest<UIImage>()
         return try await withTaskCancellationHandler(operation: {
@@ -149,11 +158,11 @@ final class PhotoAccess: @unchecked Sendable {
                 state.attach(continuation)
                 let options = PHImageRequestOptions()
                 options.isNetworkAccessAllowed = network
-                options.deliveryMode = .highQualityFormat
-                options.resizeMode = size == PHImageManagerMaximumSize ? .none : .fast
+                options.deliveryMode = thumbnail ? .fastFormat : .highQualityFormat
+                options.resizeMode = size == PHImageManagerMaximumSize ? .none : .exact
                 let requestID = images.requestImage(for: asset, targetSize: size, contentMode: .aspectFit,
                                                      options: options) { image, info in
-                    if (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue == true { return }
+                    if !thumbnail && (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue == true { return }
                     if let error = info?[PHImageErrorKey] as? Error { state.finish(.failure(error)) }
                     else if let image { state.finish(.success(image)) }
                     else { state.finish(.failure(PhotoAccessError.unavailable)) }
@@ -201,6 +210,11 @@ final class PhotoAccess: @unchecked Sendable {
     func delete(ids: Set<String>) async throws {
         let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil)
         guard assets.count == ids.count else { throw PhotoAccessError.missing }
+        var canDelete = true
+        assets.enumerateObjects { asset, _, _ in
+            if !asset.canPerform(.delete) { canDelete = false }
+        }
+        guard canDelete else { throw PhotoAccessError.cannotDelete }
         try await PHPhotoLibrary.shared().performChanges {
             PHAssetChangeRequest.deleteAssets(assets)
         }

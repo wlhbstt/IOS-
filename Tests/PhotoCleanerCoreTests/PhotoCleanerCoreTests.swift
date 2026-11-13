@@ -79,6 +79,31 @@ final class PhotoCleanerCoreTests: XCTestCase {
         XCTAssertFalse(query.matches(MediaRecord(id: "unknown")))
     }
 
+    func testSearchNormalizesChineseDatesFullWidthAndOCRLineBreaks() {
+        let record = MediaRecord(id: "1", createdAt: date("2024-06-12T12:00:00Z"), tags: ["车辆"], text: "快递取\n件码 ＡＢＣ１２３")
+        XCTAssertTrue(MediaQuery(text: "汽车 2024年6月12日").matches(record))
+        XCTAssertTrue(MediaQuery(text: "2024/6/12 abc123").matches(record))
+        XCTAssertTrue(MediaQuery(text: "取件码").matches(record))
+        XCTAssertFalse(MediaQuery(text: "汽车 发票").matches(record))
+        XCTAssertFalse(MediaQuery(text: "2023年6月12日").matches(record))
+    }
+
+    func testMetadataRefreshKeepsAnalysisOnlyForUnchangedResources() {
+        let analyzed = MediaRecord(id: "1", filename: "a.heic", createdAt: date("2024-06-12T12:00:00Z"),
+            originalBytes: 100, digest: "hash", featurePrint: Data([1]), customTags: ["工作"], text: "文字", analysisState: .complete)
+        var metadata = MediaRecord(id: "1", filename: "a.heic", createdAt: analyzed.createdAt, isFavorite: true)
+        let unchanged = analyzed.updatingMetadata(from: metadata)
+        XCTAssertEqual(unchanged.digest, "hash")
+        XCTAssertEqual(unchanged.text, "文字")
+        XCTAssertTrue(unchanged.isFavorite)
+        metadata.width = 500
+        let edited = analyzed.updatingMetadata(from: metadata)
+        XCTAssertNil(edited.digest)
+        XCTAssertNil(edited.featurePrint)
+        XCTAssertEqual(edited.analysisState, .pending)
+        XCTAssertEqual(edited.customTags, ["工作"])
+    }
+
     func testWhitespaceQueryStillAppliesTagsAndCalendarDateFilters() {
         let calendar = Calendar.current
         let day = calendar.date(from: DateComponents(year: 2024, month: 6, day: 12))!

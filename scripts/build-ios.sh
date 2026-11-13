@@ -29,6 +29,22 @@ echo "Running PhotoCleanerCore tests"
 swift test
 echo "Generating Xcode project"
 xcodegen generate --spec project.yml
+echo "Testing local index migration and feature storage on an iOS simulator"
+simulator_id="$(xcrun simctl list devices available -j | node -e '
+let input = "";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+    const devices = Object.entries(JSON.parse(input).devices)
+        .filter(([runtime]) => runtime.includes("iOS"))
+        .flatMap(([, devices]) => devices);
+    const phone = devices.find(device => device.isAvailable && device.name.includes("iPhone"));
+    if (!phone) process.exit(1);
+    process.stdout.write(phone.udid);
+});')"
+xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
+    -configuration Debug -destination "platform=iOS Simulator,id=$simulator_id" \
+    -derivedDataPath "$run_dir/Simulator" \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
 echo "Building Release for a generic iOS device without signing"
 xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
     -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \

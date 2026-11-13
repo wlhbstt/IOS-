@@ -5,6 +5,11 @@ import PhotoCleanerCore
 
 actor ImageAnalyzer {
     func analyze(_ source: MediaRecord, image: UIImage) throws -> MediaRecord {
+        try autoreleasepool { try analyzeImage(source, image: image) }
+    }
+
+    private func analyzeImage(_ source: MediaRecord, image: UIImage) throws -> MediaRecord {
+        try Task.checkCancellation()
         guard let cgImage = image.cgImage else { throw PhotoAccessError.unavailable }
         let text = VNRecognizeTextRequest()
         text.recognitionLevel = .accurate
@@ -12,7 +17,8 @@ actor ImageAnalyzer {
         let classification = VNClassifyImageRequest()
         let feature = VNGenerateImageFeaturePrintRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: image.imageOrientation.cgOrientation)
-        try handler.perform([text, classification, feature])
+        if source.isScreenshot { try handler.perform([text]) }
+        else { try handler.perform([text, classification, feature]) }
         try Task.checkCancellation()
 
         var record = source
@@ -21,7 +27,7 @@ actor ImageAnalyzer {
         if source.isLivePhoto { tags.append("实况照片") }
         tags += ScreenshotRules.tags(for: record.text)
         if ScreenshotRules.isSensitive(text: record.text) { tags.append("重要资料") }
-        for observation in (classification.results ?? []).prefix(10) where observation.confidence >= 0.25 {
+        for observation in (classification.results ?? []).prefix(5) where observation.confidence >= 0.45 {
             if let tag = Self.category(observation.identifier) { tags.append(tag) }
         }
         if let observation = feature.results?.first {
@@ -105,44 +111,45 @@ private extension UIImage.Orientation {
 }
 
 actor SimilarFinder {
-    func groups(in records: [MediaRecord]) throws -> [DuplicateGroup] {
+    func groups(in records: [MediaRecord], index: LocalIndex) async throws -> [DuplicateGroup] {
         let eligible = records.filter {
             $0.kind == .image && !$0.isScreenshot && !$0.isLivePhoto && !$0.isComplex && $0.createdAt != nil &&
-            $0.featurePrint != nil && $0.perceptualHash != nil
+            $0.perceptualHash != nil
         }.sorted { ($0.createdAt!, $0.id) < ($1.createdAt!, $1.id) }
         var groups: [[MediaRecord]] = []
         var membership: [String: Int] = [:]
         var observations: [String: VNFeaturePrintObservation] = [:]
 
-        func observation(_ record: MediaRecord) -> VNFeaturePrintObservation? {
+        func observation(_ record: MediaRecord) async -> VNFeaturePrintObservation? {
             if let cached = observations[record.id] { return cached }
-            guard let data = record.featurePrint,
+            let stored = await index.featurePrint(id: record.id)
+            guard let data = stored,
                   let value = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data)
             else { return nil }
             observations[record.id] = value
             return value
         }
 
-        func matches(_ lhs: MediaRecord, _ rhs: MediaRecord) -> Bool {
+        func matches(_ lhs: MediaRecord, _ rhs: MediaRecord) async -> Bool {
             if let digest = lhs.digest, digest == rhs.digest { return false }
             guard let a = lhs.perceptualHash, let b = rhs.perceptualHash,
                   (a ^ b).nonzeroBitCount <= 8,
                   abs(Double(lhs.width) / Double(max(lhs.height, 1)) - Double(rhs.width) / Double(max(rhs.height, 1))) < 0.08,
-                  let first = observation(lhs), let second = observation(rhs) else { return false }
+                  let first = await observation(lhs), let second = await observation(rhs) else { return false }
             var distance: Float = 0
             do { try first.computeDistance(&distance, to: second) }
             catch { return false }
             return distance < 0.30
         }
 
-        for (index, record) in eligible.enumerated() {
+        for (position, record) in eligible.enumerated() {
             try Task.checkCancellation()
-            for previousIndex in stride(from: index - 1, through: max(0, index - 20), by: -1) where previousIndex >= 0 {
+            for previousIndex in stride(from: position - 1, through: max(0, position - 20), by: -1) where previousIndex >= 0 {
                 let previous = eligible[previousIndex]
                 guard record.createdAt!.timeIntervalSince(previous.createdAt!) <= 10 else { break }
                 let groupIndex = membership[previous.id]
                 let representative = groupIndex.map { groups[$0][0] } ?? previous
-                guard matches(record, representative) else { continue }
+                guard await matches(record, representative) else { continue }
                 if let groupIndex {
                     groups[groupIndex].append(record)
                     membership[record.id] = groupIndex
@@ -153,7 +160,7 @@ actor SimilarFinder {
                 }
                 break
             }
-            if index > 20 { observations.removeValue(forKey: eligible[index - 21].id) }
+            if position > 20 { observations.removeValue(forKey: eligible[position - 21].id) }
         }
         return groups.map { members in
             let keep = members.sorted {

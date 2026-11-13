@@ -28,8 +28,11 @@ struct PhotoThumbnail: View {
         }
         .task(id: id) {
             image = nil
-            image = try? await library.photos.image(id: id, size: CGSize(width: 360, height: 360))
+            let loaded = try? await library.photos.image(id: id, size: CGSize(width: 280, height: 280), thumbnail: true)
+            guard !Task.isCancelled else { return }
+            image = loaded
         }
+        .onDisappear { image = nil }
         .accessibilityHidden(true)
     }
 }
@@ -137,7 +140,7 @@ struct PhotoDetailView: View {
         }
         .task(id: "\(download):\(fullResolution)") {
             if !tagsInitialized {
-                tags = Array(Set(current.tags + current.customTags)).sorted().joined(separator: "，")
+                tags = current.customTags.joined(separator: "，")
                 tagsInitialized = true
             }
             loading = true
@@ -202,7 +205,6 @@ final class ZoomingPhotoScrollView: UIScrollView, UIScrollViewDelegate {
 struct DeletionReviewView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
-    @State private var confirming = false
     @State private var preview: MediaRecord?
 
     private var selected: [MediaRecord] {
@@ -240,15 +242,17 @@ struct DeletionReviewView: View {
             ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
             ToolbarItem(placement: .topBarTrailing) { Button("清空") { library.selectedIDs.removeAll() }.disabled(selected.isEmpty) }
             ToolbarItem(placement: .bottomBar) {
-                Button("删除 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) { confirming = true }
-                    .disabled(library.selectedIDs.isEmpty || library.isDeleting)
+                Button("删除 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) {
+                    Task {
+                        await library.deleteSelected()
+                        if library.selectedIDs.isEmpty { dismiss() }
+                    }
+                }
+                    .disabled(library.selectedIDs.isEmpty || library.isDeleting || library.isReloading)
             }
         }
-        .confirmationDialog("删除选中的 \(library.selectedIDs.count) 个项目？", isPresented: $confirming, titleVisibility: .visible) {
-            Button("继续删除", role: .destructive) {
-                dismiss()
-                Task { await library.deleteSelected() }
-            }
+        .alert(item: $library.notice) { notice in
+            Alert(title: Text("相册整理"), message: Text(notice.message), dismissButton: .default(Text("好")))
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
     }
