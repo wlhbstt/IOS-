@@ -47,6 +47,7 @@ final class LibraryStore: ObservableObject {
     private let analyzer = ImageAnalyzer()
     private let similarFinder = SimilarFinder()
     private let observer = LibraryChangeObserver()
+    private var observerRegistered = false
     private var records: [String: MediaRecord] = [:]
     private var assetMap: [String: PHAsset] = [:]
     private var indexLoaded = false
@@ -83,10 +84,11 @@ final class LibraryStore: ObservableObject {
                 }
             }
         }
-        PHPhotoLibrary.shared().register(observer)
     }
 
-    deinit { PHPhotoLibrary.shared().unregisterChangeObserver(observer) }
+    deinit {
+        if observerRegistered { PHPhotoLibrary.shared().unregisterChangeObserver(observer) }
+    }
 
     var hasAccess: Bool { authorization == .authorized || authorization == .limited }
     var selectedOriginalBytes: Int64? {
@@ -113,6 +115,10 @@ final class LibraryStore: ObservableObject {
         authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard hasAccess else {
             pause()
+            if observerRegistered {
+                PHPhotoLibrary.shared().unregisterChangeObserver(observer)
+                observerRegistered = false
+            }
             records.removeAll()
             assetMap.removeAll()
             selectedIDs.removeAll()
@@ -122,6 +128,10 @@ final class LibraryStore: ObservableObject {
             indexLoaded = false
             await publishSnapshot()
             return
+        }
+        if !observerRegistered {
+            PHPhotoLibrary.shared().register(observer)
+            observerRegistered = true
         }
         do {
             if !indexLoaded {

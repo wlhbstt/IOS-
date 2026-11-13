@@ -5,14 +5,20 @@ final class LibraryUITests: XCTestCase {
     func testLibraryScreensAndSelection() {
         continueAfterFailure = false
         let app = XCUIApplication()
+        addUIInterruptionMonitor(withDescription: "Photo library access") { alert in
+            let allow = alert.buttons.matching(NSPredicate(format:
+                "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完全访问' OR label CONTAINS '所有照片'")).firstMatch
+            guard allow.exists else { return false }
+            allow.tap()
+            return true
+        }
         app.launch()
         if app.buttons["选择照片访问范围"].waitForExistence(timeout: 3) {
             app.buttons["选择照片访问范围"].tap()
             let permissions = XCUIApplication(bundleIdentifier: "com.apple.springboard")
             let allow = permissions.buttons.matching(NSPredicate(format:
                 "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完全访问' OR label CONTAINS '所有照片'")).firstMatch
-            XCTAssertTrue(allow.waitForExistence(timeout: 10))
-            allow.tap()
+            if allow.waitForExistence(timeout: 3) { allow.tap() }
         }
         XCTAssertTrue(app.staticTexts["清理项目"].waitForExistence(timeout: 30))
         capture("01-cleanup", app: app)
