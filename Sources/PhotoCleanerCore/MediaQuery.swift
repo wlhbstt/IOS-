@@ -32,14 +32,16 @@ public struct MediaQuery: Sendable {
     public let startDate: Date?
     public let endDate: Date?
     private let terms: [[String]]
+    private let literals: [String]
 
     public init(text: String = "", tag: String? = nil, startDate: Date? = nil, endDate: Date? = nil) {
         self.text = text
         self.tag = tag
         self.startDate = startDate
         self.endDate = endDate
-        terms = text.split(whereSeparator: { $0.isWhitespace }).map {
-            let term = Self.folded(String($0))
+        let normalized = text.split(whereSeparator: { $0.isWhitespace }).map { Self.folded(String($0)) }
+        literals = normalized
+        terms = normalized.map { term in
             return Self.aliases.first(where: { $0.contains(term) }) ?? [term]
         }
     }
@@ -74,7 +76,10 @@ public struct MediaQuery: Sendable {
             }
         }
         let haystack = Self.folded(searchable.joined(separator: "\n"))
-        return terms.allSatisfy { alternatives in alternatives.contains(where: haystack.contains) }
+        let categories = Set(allTags.map(Self.folded))
+        return zip(literals, terms).allSatisfy { literal, alternatives in
+            haystack.contains(literal) || !categories.isDisjoint(with: alternatives)
+        }
     }
 
     private static let aliases = [

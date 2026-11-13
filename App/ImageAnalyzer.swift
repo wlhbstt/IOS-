@@ -124,8 +124,11 @@ actor SimilarFinder {
             if let cached = observations[record.id] { return cached }
             let stored = await index.featurePrint(id: record.id)
             guard let data = stored,
-                  let value = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data)
+                  let value = autoreleasepool(invoking: {
+                      try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: data)
+                  })
             else { return nil }
+            if observations.count >= 32 { observations.removeAll(keepingCapacity: true) }
             observations[record.id] = value
             return value
         }

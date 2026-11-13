@@ -68,6 +68,7 @@ struct LibraryControls: ViewModifier {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
                 if library.isScanning || library.isReloading {
                     HStack(spacing: 12) {
                         if library.isReloading { ProgressView(); Text("正在读取相册") }
@@ -91,6 +92,7 @@ struct LibraryControls: ViewModifier {
                         .buttonStyle(.borderedProminent).tint(.red)
                         .disabled(library.isDeleting || library.isReloading)
                     }.padding().background(.bar)
+                }
                 }
             }
             .sheet(isPresented: $settings) { NavigationStack { SettingsView() } }

@@ -86,6 +86,7 @@ final class PhotoCleanerCoreTests: XCTestCase {
         XCTAssertTrue(MediaQuery(text: "取件码").matches(record))
         XCTAssertFalse(MediaQuery(text: "汽车 发票").matches(record))
         XCTAssertFalse(MediaQuery(text: "2023年6月12日").matches(record))
+        XCTAssertFalse(MediaQuery(text: "汽车").matches(MediaRecord(id: "unrelated", filename: "scarlet.jpg")))
     }
 
     func testMetadataRefreshKeepsAnalysisOnlyForUnchangedResources() {
