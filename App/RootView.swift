@@ -9,6 +9,8 @@ struct RootView: View {
         Group {
             if library.hasAccess {
                 TabView {
+                    NavigationStack { OrganizeView() }
+                        .tabItem { Label("整理", systemImage: "rectangle.stack") }
                     NavigationStack { CleanupView() }
                         .tabItem { Label("清理", systemImage: "sparkles") }
                     NavigationStack { CategoriesView() }
@@ -19,7 +21,7 @@ struct RootView: View {
                 .tint(LibraryStyle.accent)
                 .toolbarBackground(Color(uiColor: .systemBackground), for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)
-                .disabled(library.isDeleting)
+                .disabled(library.isDeleting || library.isSavingFavorites)
             } else {
                 NavigationStack {
                     ContentUnavailableView {
@@ -63,8 +65,9 @@ struct LibraryControls: ViewModifier {
                     Button { Task { await library.refreshResults() } } label: { Image(systemName: "arrow.clockwise") }
                         .disabled(library.isReloading).accessibilityLabel("刷新扫描结果").help("刷新扫描结果")
                     Button { review = true } label: {
-                        Label("待删 \(library.selectedIDs.count)", systemImage: "trash")
-                    }.disabled(library.selectedIDs.isEmpty)
+                        Label("待确认 \(library.selectedIDs.count + library.pendingFavoriteIDs.count)", systemImage: "tray")
+                    }.disabled(library.selectedIDs.isEmpty && library.pendingFavoriteIDs.isEmpty)
+                        .accessibilityIdentifier("library.pending")
                     Button { settings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("设置").help("设置")
                 }
@@ -105,6 +108,15 @@ struct LibraryControls: ViewModifier {
                         .disabled(library.isDeleting || library.isReloading)
                     }.padding(.horizontal, 20).padding(.vertical, 12).background(.bar)
                         .overlay(alignment: .top) { Divider() }
+                }
+                if library.selectedIDs.isEmpty && !library.pendingFavoriteIDs.isEmpty {
+                    Button { review = true } label: {
+                        HStack {
+                            Label("待收藏 \(library.pendingFavoriteIDs.count) 项", systemImage: "heart")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }.padding(16).frame(maxWidth: .infinity).contentShape(Rectangle())
+                    }.buttonStyle(.plain).foregroundStyle(.pink).background(.bar)
                 }
                 }
             }
@@ -188,6 +200,14 @@ struct CleanupView: View {
                         Image(systemName: "chevron.right").font(.caption)
                     }.font(.subheadline).padding(.vertical, 12)
                 }
+                Divider()
+                NavigationLink { RecordBrowser(title: "大文件", mode: .all) } label: {
+                    Label("大文件", systemImage: "internaldrive").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                NavigationLink { CompressionLibraryView() } label: {
+                    Label("图片与视频压缩", systemImage: "arrow.down.right.and.arrow.up.left")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }.accessibilityIdentifier("library.compression")
             }.padding(20)
         }.background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("相册整理")
@@ -229,6 +249,7 @@ struct RecordBrowser: View {
     let title: String
     var tag: String? = nil
     var mode = BrowserMode.all
+    var sourceIDs: Set<String>? = nil
     @State private var query = ""
     @State private var sort = MediaSort.sizeDescending
     @State private var useDates = false
@@ -237,7 +258,9 @@ struct RecordBrowser: View {
     @State private var results: [MediaRecord] = []
     @State private var preview: MediaRecord?
     @State private var filtering = false
-    private let columns = [GridItem(.adaptive(minimum: 104, maximum: 180), spacing: 8)]
+    @AppStorage("library.twoRows") private var twoRows = false
+    @State private var reviewLaunch: ReviewLaunch?
+    private let columns = [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
 
     private var filterID: String {
         "\(library.snapshotRevision)|\(query)|\(sort.rawValue)|\(useDates)|\(from.timeIntervalSince1970)|\(to.timeIntervalSince1970)|\(tag ?? "")|\(mode.rawValue)"
@@ -249,15 +272,20 @@ struct RecordBrowser: View {
                 Text("\(results.count.formatted()) 项").font(.subheadline.weight(.semibold)).monospacedDigit()
                 if filtering { ProgressView().controlSize(.small) }
                 Spacer()
+                Button { reviewLaunch = ReviewLaunch(title: title, ids: results.map(\.id)) } label: {
+                    Image(systemName: "rectangle.stack").frame(width: 44, height: 44)
+                }.accessibilityLabel("逐张整理").accessibilityIdentifier("browser.review").disabled(results.isEmpty)
+                Button { twoRows.toggle() } label: {
+                    Image(systemName: twoRows ? "square.grid.3x3" : "rectangle.grid.1x2").frame(width: 44, height: 44)
+                }.accessibilityLabel(twoRows ? "网格浏览" : "双行浏览").accessibilityIdentifier("browser.layout")
                 Menu {
                     Button("选择当前结果", systemImage: "checkmark.circle") { library.selectVisible(Set(results.map(\.id))) }
                     Button("取消当前结果选择", systemImage: "minus.circle") { library.selectedIDs.subtract(Set(results.map(\.id))) }
                 } label: { Image(systemName: "checklist") }
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityLabel("批量选择").help("批量选择").disabled(results.isEmpty)
-                Toggle(isOn: $useDates) { Image(systemName: "calendar") }
-                    .toggleStyle(.button).accessibilityLabel("日期范围")
                 Menu {
+                    Toggle("日期范围", isOn: $useDates)
                     Picker("排序", selection: $sort) {
                         Text("原文件大小：从大到小").tag(MediaSort.sizeDescending)
                         Text("原文件大小：从小到大").tag(MediaSort.sizeAscending)
@@ -276,16 +304,21 @@ struct RecordBrowser: View {
             if results.isEmpty && !filtering {
                 ContentUnavailableView("没有匹配的项目", systemImage: "photo")
             } else {
+                if twoRows {
+                    GeometryReader { geometry in
+                        let height = min(240, max(120, (geometry.size.height - 32) / 2))
+                        ScrollView(.horizontal) {
+                            LazyHGrid(rows: [GridItem(.fixed(height)), GridItem(.fixed(height))], spacing: 8) {
+                                ForEach(results) { record in
+                                    tile(record).frame(width: max(120, height - 22))
+                                }
+                            }.padding(12)
+                        }.accessibilityIdentifier("browser.twoRows")
+                    }
+                } else {
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(results) { record in
-                            PhotoTile(record: record, selected: library.selectedIDs.contains(record.id),
-                                protected: library.isProtected(record.id),
-                                selectionActive: !library.selectedIDs.isEmpty,
-                                select: { library.toggleSelection(record.id) },
-                                preview: { preview = record })
-                        }
-                    }.padding(12)
+                    LazyVGrid(columns: columns, spacing: 12) { ForEach(results) { record in tile(record) } }.padding(8)
+                }
                 }
             }
         }
@@ -298,13 +331,13 @@ struct RecordBrowser: View {
             do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
             let snapshot = library.snapshot
             let request = MediaQuery(text: query, tag: tag, startDate: useDates ? from : nil, endDate: useDates ? to : nil)
-            let order = sort, filterMode = mode
+            let order = sort, filterMode = mode, allowed = sourceIDs
             let worker = Task.detached(priority: .userInitiated) {
                 var matches: [MediaRecord] = []
                 for record in snapshot {
                     try Task.checkCancellation()
                     let include: Bool = {
-                    guard request.matches(record) else { return false }
+                    guard allowed?.contains(record.id) != false, request.matches(record) else { return false }
                     switch filterMode {
                     case .all: return true
                     case .temporary: return record.isScreenshot && !ScreenshotRules.isSensitive(text: record.text) &&
@@ -324,7 +357,14 @@ struct RecordBrowser: View {
             }, onCancel: { worker.cancel() })
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
+        .fullScreenCover(item: $reviewLaunch) { launch in NavigationStack { SwipeReviewView(title: launch.title, ids: launch.ids) } }
         .modifier(LibraryControls())
+    }
+
+    private func tile(_ record: MediaRecord) -> some View {
+        PhotoTile(record: record, selected: library.selectedIDs.contains(record.id),
+            protected: library.isProtected(record.id), selectionActive: !library.selectedIDs.isEmpty,
+            select: { library.toggleSelection(record.id) }, preview: { preview = record })
     }
 }
 

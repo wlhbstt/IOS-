@@ -54,6 +54,9 @@ for photo in photo-1500530855697-b586d89ba3ee photo-1470071459604-3b5ec3a7fe05 p
         "https://images.unsplash.com/$photo?w=640&q=75" -o "$run_dir/$photo.jpg"
     xcrun simctl addmedia "$simulator_id" "$run_dir/$photo.jpg"
 done
+curl -fL --connect-timeout 15 --max-time 60 \
+    'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=3200&q=95' -o "$run_dir/compression-fixture.jpg"
+xcrun simctl addmedia "$simulator_id" "$run_dir/compression-fixture.jpg"
 echo "Verifying simulator fixture resources"
 find "$HOME/Library/Developer/CoreSimulator/Devices/$simulator_id/data/Media/DCIM" -type f -exec ls -l {} +
 xcodebuild "${simulator_args[@]}" \

@@ -22,6 +22,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var isScanning = false
     @Published private(set) var isReloading = false
     @Published private(set) var isDeleting = false
+    @Published private(set) var isSavingFavorites = false
     @Published private(set) var processed = 0
     @Published private(set) var scanTotal = 0
     @Published private(set) var analyzedCount = 0
@@ -32,7 +33,10 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var screenshotPreviewIDs: [String] = []
     @Published private(set) var qualityPreviewIDs: [String] = []
     @Published private(set) var categoryPreviewIDs: [String: String] = [:]
-    @Published var selectedIDs = Set<String>()
+    @Published var selectedIDs = Set<String>() {
+        didSet { pendingFavoriteIDs.subtract(selectedIDs) }
+    }
+    @Published var pendingFavoriteIDs = Set<String>()
     @Published var notice: LibraryNotice?
     @Published var allowCloudDownload: Bool {
         didSet {
@@ -101,7 +105,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func reload() async {
-        guard !isReloading, !isDeleting else { return }
+        guard !isReloading, !isDeleting, !isSavingFavorites else { return }
         isReloading = true
         defer {
             isReloading = false
@@ -122,6 +126,7 @@ final class LibraryStore: ObservableObject {
             records.removeAll()
             assetMap.removeAll()
             selectedIDs.removeAll()
+            pendingFavoriteIDs.removeAll()
             protectedIDs.removeAll()
             albums = []
             try? await index.clear()
@@ -166,6 +171,7 @@ final class LibraryStore: ObservableObject {
             selectedIDs.formIntersection(Set(records.keys))
             selectedIDs.subtract(protectedIDs)
             selectedIDs = selectedIDs.filter { records[$0]?.isFavorite == false }
+            pendingFavoriteIDs = pendingFavoriteIDs.filter { records[$0]?.isFavorite == false }
             try await index.retain(ids: Set(records.keys))
             await publishSnapshot()
         } catch {
@@ -174,7 +180,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func scan(originals: Bool = false) {
-        guard hasAccess, !isReloading, scanTask == nil, !isDeleting else { return }
+        guard hasAccess, !isReloading, scanTask == nil, !isDeleting, !isSavingFavorites else { return }
         let epoch = UUID()
         scanEpoch = epoch
         let candidates = records.values.filter {
@@ -411,7 +417,7 @@ final class LibraryStore: ObservableObject {
     func isProtected(_ id: String) -> Bool { records[id]?.isFavorite == true || protectedIDs.contains(id) }
 
     func toggleSelection(_ id: String) {
-        guard !isDeleting else { return }
+        guard !isDeleting, !isSavingFavorites else { return }
         if selectedIDs.contains(id) { selectedIDs.remove(id); return }
         let proposed = selectedIDs.union([id])
         do {
@@ -419,6 +425,54 @@ final class LibraryStore: ObservableObject {
                 protectedIDs: protectedIDs, groups: exactGroups + similarGroups)
             selectedIDs = proposed
         } catch { notice = LibraryNotice(message: error.localizedDescription) }
+    }
+
+    @discardableResult
+    func stageReview(_ id: String, decision: ReviewDecision) -> Bool {
+        guard !isDeleting, !isSavingFavorites, !isReloading, let record = records[id] else { return false }
+        switch decision {
+        case .delete:
+            if !selectedIDs.contains(id) { toggleSelection(id) }
+            return selectedIDs.contains(id)
+        case .keep:
+            selectedIDs.remove(id)
+            pendingFavoriteIDs.remove(id)
+        case .favorite:
+            selectedIDs.remove(id)
+            if !record.isFavorite { pendingFavoriteIDs.insert(id) }
+        case .skip: break
+        }
+        return true
+    }
+
+    func restoreReview(_ step: ReviewStep) {
+        guard !isDeleting, !isSavingFavorites, records[step.id] != nil else { return }
+        selectedIDs.remove(step.id)
+        pendingFavoriteIDs.remove(step.id)
+        if step.wasSelected { toggleSelection(step.id) }
+        if step.wasFavoritePending, !selectedIDs.contains(step.id), records[step.id]?.isFavorite == false {
+            pendingFavoriteIDs.insert(step.id)
+        }
+    }
+
+    func confirmFavorites() async {
+        guard !isSavingFavorites, !isDeleting, !isReloading, !pendingFavoriteIDs.isEmpty else { return }
+        isSavingFavorites = true
+        pause()
+        let ids = pendingFavoriteIDs
+        do {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil)
+            guard assets.count == ids.count else { throw PhotoAccessError.missing }
+            try await PHPhotoLibrary.shared().performChanges {
+                assets.enumerateObjects { asset, _, _ in PHAssetChangeRequest(for: asset).isFavorite = true }
+            }
+            pendingFavoriteIDs.subtract(ids)
+            selectedIDs.subtract(ids)
+            for id in ids { records[id]?.isFavorite = true }
+            await publishSnapshot(rebuildGroups: false)
+        } catch { notice = LibraryNotice(message: "收藏未完成：\(error.localizedDescription)") }
+        isSavingFavorites = false
+        await reload()
     }
 
     func selectRecommended(_ group: DuplicateGroup) {
@@ -492,10 +546,15 @@ final class LibraryStore: ObservableObject {
         await delete(ids: selectedIDs)
     }
 
-    func delete(ids: Set<String>) async {
-        guard !isDeleting, !isReloading, !ids.isEmpty else { return }
+    func deleteCompressedOriginal(originalID: String, modifiedAt: Date?, copyID: String) async {
+        guard originalID != copyID else { return }
+        await delete(ids: [originalID], expectedModification: (originalID, modifiedAt), requiredCopyID: copyID)
+    }
+
+    func delete(ids: Set<String>, expectedModification: (id: String, date: Date?)? = nil, requiredCopyID: String? = nil) async {
+        guard !isDeleting, !isSavingFavorites, !isReloading, !ids.isEmpty else { return }
         let reviewedGroups = (exactGroups + similarGroups).filter { $0.memberIDs.contains(where: ids.contains) }
-        let relevantIDs = ids.union(reviewedGroups.flatMap(\.memberIDs))
+        let relevantIDs = ids.union(reviewedGroups.flatMap(\.memberIDs)).union(requiredCopyID.map { [$0] } ?? [])
         let reviewedRecords = relevantIDs.compactMap { records[$0] }
         isDeleting = true
         defer { isDeleting = false }
@@ -510,6 +569,13 @@ final class LibraryStore: ObservableObject {
             let current = await Task.detached(priority: .userInitiated) { [photos] in
                 photos.metadata(ids: relevantIDs)
             }.value.map { metadata in records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata }
+            if let expectedModification {
+                guard current.contains(where: { $0.id == expectedModification.id && $0.modifiedAt == expectedModification.date }),
+                      requiredCopyID.map({ id in current.contains(where: { $0.id == id }) }) == true else {
+                    notice = LibraryNotice(message: "原件已变化或压缩副本已不可访问，本次未删除。")
+                    return
+                }
+            }
             let protection = photos.protectedIDs(albumIDs: protectedAlbumIDs)
             try DeletionPolicy.validateUnchanged(selectedIDs: ids, reviewedRecords: reviewedRecords,
                 currentRecords: current, groups: reviewedGroups)
@@ -517,6 +583,7 @@ final class LibraryStore: ObservableObject {
                 protectedIDs: protection, groups: reviewedGroups)
             try await photos.delete(ids: ids)
             selectedIDs.subtract(ids)
+            pendingFavoriteIDs.subtract(ids)
             for id in ids { records.removeValue(forKey: id); assetMap.removeValue(forKey: id) }
             exactGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
             similarGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }

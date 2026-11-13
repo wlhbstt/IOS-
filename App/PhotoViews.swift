@@ -68,6 +68,7 @@ struct PhotoTile: View {
                     }
                     .buttonStyle(.plain).disabled(protected)
                     .accessibilityLabel(protected ? "已保护" : (selected ? "取消选择" : "选择待删"))
+                    .accessibilityIdentifier("photo.select.\(record.filename)")
                     .padding(5)
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -222,16 +223,22 @@ struct DeletionReviewView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
     @State private var preview: MediaRecord?
+    @State private var favorites = false
 
     private var selected: [MediaRecord] {
-        MediaSorter.sorted(library.snapshot.filter { library.selectedIDs.contains($0.id) }, by: .sizeDescending)
+        let ids = favorites ? library.pendingFavoriteIDs : library.selectedIDs
+        return MediaSorter.sorted(library.snapshot.filter { ids.contains($0.id) }, by: .sizeDescending)
     }
 
     var body: some View {
         List {
+            Picker("待确认", selection: $favorites) {
+                Text("待删 \(library.selectedIDs.count)").tag(false)
+                Text("待收藏 \(library.pendingFavoriteIDs.count)").tag(true)
+            }.pickerStyle(.segmented).listRowSeparator(.hidden)
             Section {
-                LabeledContent("待删除", value: "\(library.selectedIDs.count) 项")
-                Text("删除会同步到已开启 iCloud 照片的设备。项目通常会进入系统相册的最近删除。")
+                LabeledContent(favorites ? "待收藏" : "待删除", value: "\(selected.count) 项")
+                Text(favorites ? "确认后将添加到系统相册的收藏。" : "删除会同步到已开启 iCloud 照片的设备。项目通常会进入系统相册的最近删除。")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Section {
@@ -247,24 +254,40 @@ struct DeletionReviewView: View {
                             }
                         }.buttonStyle(.plain)
                         Spacer()
-                        Button { library.selectedIDs.remove(record.id) } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless).accessibilityLabel("移出待删")
+                        Button {
+                            if favorites { library.pendingFavoriteIDs.remove(record.id) }
+                            else { library.selectedIDs.remove(record.id) }
+                        } label: { Image(systemName: "minus.circle").frame(width: 44, height: 44) }
+                            .buttonStyle(.borderless).accessibilityLabel(favorites ? "移出待收藏" : "移出待删")
                     }
                 }
             }
         }
-        .navigationTitle("待删清单")
+        .navigationTitle("待确认清单").navigationBarTitleDisplayMode(.inline)
+        .onAppear { if library.selectedIDs.isEmpty && !library.pendingFavoriteIDs.isEmpty { favorites = true } }
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
-            ToolbarItem(placement: .topBarTrailing) { Button("清空") { library.selectedIDs.removeAll() }.disabled(selected.isEmpty) }
+            ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() }.accessibilityIdentifier("pending.close") }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("清空") {
+                    if favorites { library.pendingFavoriteIDs.removeAll() } else { library.selectedIDs.removeAll() }
+                }.disabled(selected.isEmpty || library.isDeleting || library.isSavingFavorites)
+            }
             ToolbarItem(placement: .bottomBar) {
+                if favorites {
+                    Button("确认收藏 \(library.pendingFavoriteIDs.count) 项", systemImage: "heart") {
+                        Task { await library.confirmFavorites() }
+                    }.disabled(selected.isEmpty || library.isSavingFavorites || library.isDeleting || library.isReloading)
+                        .accessibilityIdentifier("pending.favorite")
+                } else {
                 Button("删除 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) {
                     Task {
                         await library.deleteSelected()
-                        if library.selectedIDs.isEmpty { dismiss() }
+                        if library.selectedIDs.isEmpty && library.pendingFavoriteIDs.isEmpty { dismiss() }
                     }
                 }
-                    .disabled(library.selectedIDs.isEmpty || library.isDeleting || library.isReloading)
+                    .disabled(library.selectedIDs.isEmpty || library.isDeleting || library.isReloading || library.isSavingFavorites)
+                    .accessibilityIdentifier("pending.delete")
+                }
             }
         }
         .alert(item: $library.notice) { notice in
@@ -300,6 +323,9 @@ struct SettingsView: View {
                 LabeledContent("已分析", value: "\(library.analyzedCount)")
                 Button("清除索引", systemImage: "trash", role: .destructive) { clear = true }
                     .disabled(library.isReloading || library.isDeleting)
+            }
+            Section("整理") {
+                NavigationLink("手势设置") { ReviewGestureSettingsView() }
             }
         }
         .navigationTitle("设置")

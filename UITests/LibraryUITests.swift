@@ -21,8 +21,10 @@ final class LibraryUITests: XCTestCase {
                     "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完全访问' OR label CONTAINS '所有照片'")).firstMatch
                 if allow.waitForExistence(timeout: 3) { allow.tap(); break }
             }
-            if !app.staticTexts["清理项目"].exists { app.tap() }
+            if !app.tabBars.buttons["清理"].exists { app.tap() }
         }
+        XCTAssertTrue(app.tabBars.buttons["清理"].waitForExistence(timeout: 30))
+        app.tabBars.buttons["清理"].tap()
         let homeReady = app.staticTexts["清理项目"].waitForExistence(timeout: 30)
         if !homeReady {
             capture("00-permission-failure")
@@ -47,7 +49,7 @@ final class LibraryUITests: XCTestCase {
         if !previewReady { print(app.debugDescription) }
         XCTAssertTrue(previewReady)
         capture("02-photos")
-        app.buttons["选择待删"].firstMatch.tap()
+        app.buttons.matching(NSPredicate(format: "label == '选择待删' AND NOT identifier CONTAINS[c] 'compression-fixture'")).firstMatch.tap()
         XCTAssertTrue(app.buttons["library.delete"].waitForExistence(timeout: 5))
         capture("03-selection")
         app.tabBars.buttons["搜索"].tap()
@@ -70,8 +72,8 @@ final class LibraryUITests: XCTestCase {
         XCTAssertEqual(analysisResult, .completed)
         XCTAssertTrue(app.buttons["library.analyze"].exists)
         app.buttons["library.all"].tap()
-        let photoCount = app.buttons.matching(identifier: "选择待删").count
-        app.buttons["选择待删"].firstMatch.tap()
+        let photoCount = app.buttons.matching(NSPredicate(format: "label == '选择待删'")).count
+        app.buttons.matching(NSPredicate(format: "label == '选择待删' AND NOT identifier CONTAINS[c] 'compression-fixture'")).firstMatch.tap()
         app.buttons["library.delete"].tap()
         let appDialog = app.alerts.firstMatch
         let dialog = appDialog.waitForExistence(timeout: 5) ? appDialog
@@ -84,7 +86,7 @@ final class LibraryUITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["library.delete"])
         waitForExpectations(timeout: 20)
         expectation(for: NSPredicate { _, _ in
-            app.buttons.matching(identifier: "选择待删").count == photoCount - 1
+            app.buttons.matching(NSPredicate(format: "label == '选择待删'")).count == photoCount - 1
         }, evaluatedWith: app)
         waitForExpectations(timeout: 15)
         capture("07-after-delete")

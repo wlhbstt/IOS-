@@ -13,6 +13,8 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
     public var filename: String
     public var createdAt: Date?
     public var modifiedAt: Date?
+    public var latitude: Double?
+    public var longitude: Double?
     public var kind: MediaKind
     public var isScreenshot: Bool
     public var isLivePhoto: Bool
@@ -37,6 +39,8 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
         filename: String = "",
         createdAt: Date? = nil,
         modifiedAt: Date? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
         kind: MediaKind = .image,
         isScreenshot: Bool = false,
         isLivePhoto: Bool = false,
@@ -60,6 +64,8 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
         self.filename = filename
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
+        self.latitude = latitude
+        self.longitude = longitude
         self.kind = kind
         self.isScreenshot = isScreenshot
         self.isLivePhoto = isLivePhoto
@@ -90,6 +96,8 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
         }
         var refreshed = self
         refreshed.isFavorite = metadata.isFavorite
+        refreshed.latitude = metadata.latitude
+        refreshed.longitude = metadata.longitude
         return refreshed
     }
 }

@@ -116,6 +116,8 @@ final class PhotoAccess: @unchecked Sendable {
         record.filename = resources.first(where: { $0.type == .photo || $0.type == .video })?.originalFilename ?? ""
         record.createdAt = asset.creationDate
         record.modifiedAt = asset.modificationDate
+        record.latitude = asset.location?.coordinate.latitude
+        record.longitude = asset.location?.coordinate.longitude
         record.kind = asset.mediaType == .video ? .video : .image
         record.isScreenshot = asset.mediaSubtypes.contains(.photoScreenshot)
         record.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
@@ -148,6 +150,10 @@ final class PhotoAccess: @unchecked Sendable {
                 }
             }
         return result
+    }
+
+    func assetIDs(in albumID: String) -> Set<String> {
+        protectedIDs(albumIDs: [albumID])
     }
 
     func image(id: String, size: CGSize, network: Bool = false, thumbnail: Bool = false) async throws -> UIImage {
