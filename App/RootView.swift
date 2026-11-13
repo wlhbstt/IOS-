@@ -9,11 +9,11 @@ struct RootView: View {
         Group {
             if library.hasAccess {
                 TabView {
-                    NavigationStack { CleanupView() }.modifier(LibraryControls())
+                    NavigationStack { CleanupView() }
                         .tabItem { Label("清理", systemImage: "sparkles") }
-                    NavigationStack { CategoriesView() }.modifier(LibraryControls())
+                    NavigationStack { CategoriesView() }
                         .tabItem { Label("分类", systemImage: "square.grid.2x2") }
-                    NavigationStack { RecordBrowser(title: "搜索") }.modifier(LibraryControls())
+                    NavigationStack { RecordBrowser(title: "搜索") }
                         .tabItem { Label("搜索", systemImage: "magnifyingglass") }
                 }
                 .tint(LibraryStyle.accent)
@@ -191,6 +191,7 @@ struct CleanupView: View {
         }.background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("相册整理")
         .refreshable { await library.reload() }
+        .modifier(LibraryControls())
     }
 }
 
@@ -216,6 +217,7 @@ struct CategoriesView: View {
         }
         .listStyle(.plain)
         .navigationTitle("分类")
+        .modifier(LibraryControls())
     }
 }
 
@@ -321,6 +323,7 @@ struct RecordBrowser: View {
             }, onCancel: { worker.cancel() })
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
+        .modifier(LibraryControls())
     }
 }
 
@@ -354,6 +357,7 @@ struct GroupListView: View {
                     .disabled(groups.isEmpty)
             }
         }
+        .modifier(LibraryControls())
     }
 }
 
@@ -382,5 +386,6 @@ struct GroupDetailView: View {
                 .buttonStyle(.bordered).padding().frame(maxWidth: .infinity).background(.bar)
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
+        .modifier(LibraryControls())
     }
 }
