@@ -69,7 +69,7 @@ final class ReviewUITests: XCTestCase {
         commit.tap()
         let dialog = systemDialog(app)
         XCTAssertTrue(dialog.waitForExistence(timeout: 10))
-        let cancel = dialog.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Cancel' OR label BEGINSWITH '取消'")).firstMatch
+        let cancel = dialog.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Cancel' OR label BEGINSWITH '取消' OR label MATCHES[c] 'Don.t Allow' OR label == '不允许'")).firstMatch
         XCTAssertTrue(cancel.exists)
         cancel.tap()
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: commit)
@@ -127,8 +127,13 @@ final class ReviewUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         app.swipeUp()
         app.buttons["compression.prepare"].tap()
+        XCTAssertTrue(app.staticTexts["compression.preview"].waitForExistence(timeout: 60))
         let save = app.buttons["compression.save"]
-        let ready = save.waitForExistence(timeout: 60)
+        for _ in 0..<6 {
+            if save.exists && save.isHittable { break }
+            app.swipeUp()
+        }
+        let ready = save.waitForExistence(timeout: 10) && save.isHittable
         if !ready { print(app.debugDescription) }
         XCTAssertTrue(ready)
         capture("16-compression-preview")
