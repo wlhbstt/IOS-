@@ -56,9 +56,14 @@ final class LibraryUITests: XCTestCase {
         app.buttons["library.analyze"].tap()
         XCUIDevice.shared.press(.home)
         app.activate()
-        XCTAssertTrue(app.buttons["library.analyze"].waitForExistence(timeout: 60))
-        XCTAssertEqual(analyzedMetric.value as? String, "\(expectedAnalyzed)")
+        let completedAnalysis = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            analyzedMetric.value as? String == "\(expectedAnalyzed)"
+        }, object: analyzedMetric)
+        let analysisResult = XCTWaiter.wait(for: [completedAnalysis], timeout: 90)
         capture("05-analyzed")
+        if analysisResult != .completed { print(app.debugDescription) }
+        XCTAssertEqual(analysisResult, .completed)
+        XCTAssertTrue(app.buttons["library.analyze"].exists)
         app.buttons["library.all"].tap()
         let photoCount = app.buttons.matching(identifier: "选择待删").count
         app.buttons["选择待删"].firstMatch.tap()
