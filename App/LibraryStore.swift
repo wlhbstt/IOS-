@@ -26,6 +26,11 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var analyzedCount = 0
     @Published private(set) var pendingCount = 0
     @Published private(set) var unknownSizeCount = 0
+    @Published private(set) var screenshotCount = 0
+    @Published private(set) var qualityCount = 0
+    @Published private(set) var screenshotPreviewIDs: [String] = []
+    @Published private(set) var qualityPreviewIDs: [String] = []
+    @Published private(set) var categoryPreviewIDs: [String: String] = [:]
     @Published var selectedIDs = Set<String>()
     @Published var notice: LibraryNotice?
     @Published var allowCloudDownload: Bool {
@@ -71,6 +76,9 @@ final class LibraryStore: ObservableObject {
     deinit { PHPhotoLibrary.shared().unregisterChangeObserver(observer) }
 
     var hasAccess: Bool { authorization == .authorized || authorization == .limited }
+    var selectedOriginalBytes: Int64? {
+        ResourceByteCounts.total(selectedIDs.map { records[$0]?.originalBytes })
+    }
 
     func requestAccess() async {
         _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
@@ -233,12 +241,24 @@ final class LibraryStore: ObservableObject {
         pendingCount = current.count - analyzedCount
         unknownSizeCount = current.filter { $0.originalBytes == nil }.count
         var counts: [String: Int] = [:]
+        var previews: [String: String] = [:]
+        var screenshots: [String] = [], quality: [String] = []
         for record in current {
-            for tag in Set(record.tags + record.customTags) { counts[tag, default: 0] += 1 }
+            if record.isScreenshot { screenshots.append(record.id) }
+            if record.tags.contains("疑似模糊") || record.tags.contains("疑似极暗") { quality.append(record.id) }
+            for tag in Set(record.tags + record.customTags) {
+                counts[tag, default: 0] += 1
+                if previews[tag] == nil { previews[tag] = record.id }
+            }
         }
         categories = counts.map { (name: $0.key, count: $0.value) }.sorted {
             $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count
         }
+        screenshotCount = screenshots.count
+        qualityCount = quality.count
+        screenshotPreviewIDs = Array(screenshots.prefix(2))
+        qualityPreviewIDs = Array(quality.prefix(2))
+        categoryPreviewIDs = previews
         snapshotRevision += 1
         guard rebuildGroups else { return }
         let worker = Task.detached(priority: .utility) { [similarFinder, index] in

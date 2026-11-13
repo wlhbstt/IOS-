@@ -41,6 +41,7 @@ struct PhotoTile: View {
     let record: MediaRecord
     let selected: Bool
     let protected: Bool
+    var selectionActive = false
     let select: () -> Void
     let preview: () -> Void
 
@@ -48,16 +49,23 @@ struct PhotoTile: View {
         VStack(alignment: .leading, spacing: 5) {
             PhotoThumbnail(id: record.id)
                 .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? LibraryStyle.accent : .clear, lineWidth: 3) }
                 .overlay(alignment: .topTrailing) {
                     Button(action: select) {
                         Image(systemName: protected ? "lock.fill" : (selected ? "checkmark.circle.fill" : "circle"))
-                            .font(.title3).foregroundStyle(selected ? .green : .white)
-                            .padding(10).background(.black.opacity(0.45), in: Circle())
+                            .font(.title3).foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(selected ? LibraryStyle.accent : .black.opacity(0.40), in: Circle())
                     }
                     .buttonStyle(.plain).disabled(protected)
                     .accessibilityLabel(protected ? "已保护" : (selected ? "取消选择" : "选择待删"))
                     .padding(5)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Text(mediaSize(record.originalBytes)).font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 4)
+                        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 4)).padding(6)
                 }
                 .overlay(alignment: .bottomLeading) {
                     if record.kind == .video || record.isLivePhoto {
@@ -65,9 +73,9 @@ struct PhotoTile: View {
                             .foregroundStyle(.white).padding(6).background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 4)).padding(5)
                     }
                 }
-                .contentShape(Rectangle()).onTapGesture(perform: preview)
-            Text(mediaSize(record.originalBytes)).font(.caption.monospacedDigit()).lineLimit(1)
-            Text(record.filename.isEmpty ? "未命名" : record.filename).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                .contentShape(Rectangle()).onTapGesture(perform: selectionActive ? select : preview)
+                .contextMenu { Button("查看照片", systemImage: "arrow.up.left.and.arrow.down.right", action: preview) }
+            Text(record.filename.isEmpty ? "未命名" : record.filename).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(record.filename)

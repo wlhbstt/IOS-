@@ -41,10 +41,25 @@ process.stdin.on("end", () => {
     if (!phone) process.exit(1);
     process.stdout.write(phone.udid);
 });')"
-xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
-    -configuration Debug -destination "platform=iOS Simulator,id=$simulator_id" \
-    -derivedDataPath "$run_dir/Simulator" \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO test
+xcrun simctl boot "$simulator_id" || true
+simulator_args=(-project PhotoCleaner.xcodeproj -scheme PhotoCleaner -configuration Debug
+    -destination "platform=iOS Simulator,id=$simulator_id" -derivedDataPath "$run_dir/Simulator"
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
+xcodebuild "${simulator_args[@]}" -parallel-testing-enabled NO build-for-testing
+xcrun simctl bootstatus "$simulator_id" -b
+xcrun simctl install "$simulator_id" "$run_dir/Simulator/Build/Products/Debug-iphonesimulator/PhotoCleaner.app"
+xcrun simctl privacy "$simulator_id" grant photos com.localphototools.PhotoCleaner
+for photo in photo-1500530855697-b586d89ba3ee photo-1470071459604-3b5ec3a7fe05 photo-1441974231531-c6227db76b6e; do
+    curl -fL --connect-timeout 15 --max-time 45 \
+        "https://images.unsplash.com/$photo?w=640&q=75" -o "$run_dir/$photo.jpg"
+    xcrun simctl addmedia "$simulator_id" "$run_dir/$photo.jpg"
+done
+xcodebuild "${simulator_args[@]}" \
+    -parallel-testing-enabled NO -destination-timeout 120 \
+    -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
+    -resultBundlePath "$run_dir/Tests.xcresult" \
+    test-without-building
+xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews"
 echo "Building Release for a generic iOS device without signing"
 xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
     -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \

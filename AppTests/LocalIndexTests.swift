@@ -1,7 +1,6 @@
 import Foundation
 import XCTest
 import PhotoCleanerCore
-@testable import PhotoCleaner
 
 final class LocalIndexTests: XCTestCase {
     private func temporaryDirectory() -> URL {

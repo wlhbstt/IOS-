@@ -33,17 +33,28 @@ targets:
     scheme:
       testTargets:
         - PhotoCleanerTests
+        - PhotoCleanerUITests
   PhotoCleanerTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: AppTests
+      - path: App/LocalIndex.swift
     dependencies:
-      - target: PhotoCleaner
       - package: PhotoCleanerCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.localphototools.PhotoCleanerTests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PhotoCleaner.app/PhotoCleaner"
-        BUNDLE_LOADER: "$(TEST_HOST)"
+  PhotoCleanerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: PhotoCleaner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.localphototools.PhotoCleanerUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: PhotoCleaner

@@ -16,7 +16,9 @@ struct RootView: View {
                     NavigationStack { RecordBrowser(title: "搜索") }.modifier(LibraryControls())
                         .tabItem { Label("搜索", systemImage: "magnifyingglass") }
                 }
-                .tint(.green)
+                .tint(LibraryStyle.accent)
+                .toolbarBackground(Color(uiColor: .systemBackground), for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
                 .disabled(library.isDeleting)
             } else {
                 NavigationStack {
@@ -75,23 +77,34 @@ struct LibraryControls: ViewModifier {
                         else {
                             ProgressView(value: Double(library.processed), total: Double(max(1, library.scanTotal)))
                             Text("\(library.processed)/\(library.scanTotal)").font(.caption.monospacedDigit())
-                            Button { library.pause() } label: { Image(systemName: "pause.fill") }
+                            Button { library.pause() } label: { Image(systemName: "pause.fill").frame(width: 44, height: 44) }
                                 .accessibilityLabel("暂停扫描").help("暂停扫描")
                         }
                     }
                     .padding().background(.bar)
                 }
                 if !library.selectedIDs.isEmpty {
-                    HStack {
-                        Button { review = true } label: { Image(systemName: "list.bullet") }
-                            .accessibilityLabel("预览待删清单")
+                    HStack(spacing: 16) {
+                        Button { review = true } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "list.bullet").font(.title3)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("已选 \(library.selectedIDs.count) 项").font(.subheadline.weight(.semibold))
+                                    Text(library.selectedOriginalBytes.map { mediaSize($0) } ?? "含未知大小")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }.frame(minHeight: 44)
+                        }.foregroundStyle(.primary).accessibilityLabel("预览待删清单")
                         Spacer()
-                        Button("删除所选 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) {
+                        Button("删除", systemImage: "trash", role: .destructive) {
                             Task { await library.deleteSelected() }
                         }
-                        .buttonStyle(.borderedProminent).tint(.red)
+                        .buttonStyle(.borderedProminent).controlSize(.large).tint(.red)
+                        .accessibilityIdentifier("library.delete")
+                        .buttonBorderShape(.roundedRectangle(radius: 8))
                         .disabled(library.isDeleting || library.isReloading)
-                    }.padding().background(.bar)
+                    }.padding(.horizontal, 20).padding(.vertical, 12).background(.bar)
+                        .overlay(alignment: .top) { Divider() }
                 }
                 }
             }
@@ -104,32 +117,77 @@ struct CleanupView: View {
     @EnvironmentObject private var library: LibraryStore
 
     var body: some View {
-        List {
-            Section {
-                LabeledContent("可访问项目", value: "\(library.snapshot.count)")
-                LabeledContent("已分析", value: "\(library.analyzedCount)")
-                LabeledContent("未分析完成", value: "\(library.pendingCount)")
-                LabeledContent("大小未知", value: "\(library.unknownSizeCount)")
-                if library.authorization == .limited { Label("当前为部分照片访问", systemImage: "lock.shield") }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(library.snapshot.count.formatted())
+                            .font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
+                        Text("个项目").foregroundStyle(.secondary)
+                        Spacer()
+                        if library.authorization == .limited {
+                            Image(systemName: "lock.shield").foregroundStyle(.secondary).accessibilityLabel("部分照片访问")
+                        }
+                    }
+                    HStack(spacing: 16) {
+                        LibraryMetric(title: "已分析", value: library.analyzedCount, color: LibraryStyle.accent)
+                        LibraryMetric(title: "待分析", value: library.pendingCount, color: .primary)
+                        LibraryMetric(title: "大小未知", value: library.unknownSizeCount, color: .secondary)
+                    }
+                    ProgressView(value: Double(library.analyzedCount), total: Double(max(1, library.snapshot.count)))
+                        .tint(LibraryStyle.accent)
+                }
                 if !library.isScanning {
-                    Button("快速分析照片", systemImage: "play.fill") { library.scan() }
-                        .disabled(library.isReloading || library.snapshot.isEmpty)
-                    Button("读取原件大小与完全重复", systemImage: "internaldrive") { library.scan(originals: true) }
-                        .disabled(library.isReloading || library.snapshot.isEmpty)
+                    VStack(spacing: 10) {
+                        Button { library.scan() } label: {
+                            HStack {
+                                Label("快速分析照片", systemImage: "viewfinder")
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                            }.font(.subheadline.weight(.semibold)).padding(15).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBackground))
+                        .background(LibraryStyle.accent, in: RoundedRectangle(cornerRadius: 8))
+                        Button("读取原件大小与完全重复", systemImage: "internaldrive") { library.scan(originals: true) }
+                            .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)
+                    }.disabled(library.isReloading || library.snapshot.isEmpty)
                 }
-            }
-            Section {
-                NavigationLink { RecordBrowser(title: "全部项目") } label: { Label("全部项目", systemImage: "photo.stack") }
-                NavigationLink { GroupListView(similar: false) } label: {
-                    LabeledContent { Text("\(library.exactGroups.count) 组") } label: { Label("完全重复", systemImage: "square.on.square") }
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("清理项目").font(.headline)
+                        Spacer()
+                        NavigationLink { RecordBrowser(title: "全部项目") } label: {
+                            HStack(spacing: 4) { Text("全部照片"); Image(systemName: "arrow.right") }.font(.subheadline)
+                        }.accessibilityIdentifier("library.all")
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        NavigationLink { GroupListView(similar: false) } label: {
+                            CleanupDestination(title: "完全重复", value: "\(library.exactGroups.count) 组", symbol: "square.on.square",
+                                color: .blue, ids: library.exactGroups.first?.memberIDs ?? [])
+                        }
+                        NavigationLink { GroupListView(similar: true) } label: {
+                            CleanupDestination(title: "相似照片", value: "\(library.similarGroups.count) 组", symbol: "rectangle.on.rectangle",
+                                color: LibraryStyle.accent, ids: library.similarGroups.first?.memberIDs ?? [])
+                        }
+                        NavigationLink { RecordBrowser(title: "截图", tag: "截图") } label: {
+                            CleanupDestination(title: "截图", value: "\(library.screenshotCount) 张", symbol: "viewfinder.rectangular",
+                                color: .orange, ids: library.screenshotPreviewIDs)
+                        }
+                        NavigationLink { RecordBrowser(title: "疑似废片", mode: .quality) } label: {
+                            CleanupDestination(title: "疑似废片", value: "\(library.qualityCount) 张", symbol: "camera.metering.unknown",
+                                color: .pink, ids: library.qualityPreviewIDs)
+                        }
+                    }.buttonStyle(.plain)
                 }
-                NavigationLink { GroupListView(similar: true) } label: {
-                    LabeledContent { Text("\(library.similarGroups.count) 组") } label: { Label("相似照片", systemImage: "rectangle.on.rectangle") }
+                NavigationLink { RecordBrowser(title: "临时截图候选", mode: .temporary) } label: {
+                    HStack {
+                        Label("临时截图候选", systemImage: "rectangle.dashed")
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption)
+                    }.font(.subheadline).padding(.vertical, 12)
                 }
-                NavigationLink { RecordBrowser(title: "临时截图候选", mode: .temporary) } label: { Label("临时截图候选", systemImage: "rectangle.dashed") }
-                NavigationLink { RecordBrowser(title: "疑似废片", mode: .quality) } label: { Label("疑似废片", systemImage: "camera.metering.unknown") }
-            }
-        }
+            }.padding(20)
+        }.background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("相册整理")
         .refreshable { await library.reload() }
     }
@@ -143,11 +201,19 @@ struct CategoriesView: View {
             NavigationLink { RecordBrowser(title: "全部项目") } label: { LabeledContent("全部项目", value: "\(library.snapshot.count)") }
             ForEach(library.categories, id: \.name) { category in
                 NavigationLink { RecordBrowser(title: category.name, tag: category.name) } label: {
-                    LabeledContent(category.name, value: "\(category.count)")
+                    HStack(spacing: 14) {
+                        if let id = library.categoryPreviewIDs[category.name] {
+                            PhotoThumbnail(id: id).frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        Text(category.name).font(.body.weight(.medium))
+                        Spacer()
+                        Text(category.count.formatted()).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
                 }
             }
             if library.categories.isEmpty { ContentUnavailableView("尚无分类结果", systemImage: "square.grid.2x2") }
         }
+        .listStyle(.plain)
         .navigationTitle("分类")
     }
 }
@@ -176,13 +242,14 @@ struct RecordBrowser: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("\(results.count) 项").font(.subheadline).foregroundStyle(.secondary)
+                Text("\(results.count.formatted()) 项").font(.subheadline.weight(.semibold)).monospacedDigit()
                 if filtering { ProgressView().controlSize(.small) }
                 Spacer()
                 Menu {
                     Button("选择当前结果", systemImage: "checkmark.circle") { library.selectVisible(Set(results.map(\.id))) }
                     Button("取消当前结果选择", systemImage: "minus.circle") { library.selectedIDs.subtract(Set(results.map(\.id))) }
                 } label: { Image(systemName: "checklist") }
+                    .frame(minWidth: 44, minHeight: 44)
                     .accessibilityLabel("批量选择").help("批量选择").disabled(results.isEmpty)
                 Toggle(isOn: $useDates) { Image(systemName: "calendar") }
                     .toggleStyle(.button).accessibilityLabel("日期范围")
@@ -193,9 +260,9 @@ struct RecordBrowser: View {
                         Text("日期：从新到旧").tag(MediaSort.newest)
                         Text("日期：从旧到新").tag(MediaSort.oldest)
                     }
-                } label: { Image(systemName: "arrow.up.arrow.down") }
+                } label: { Image(systemName: "arrow.up.arrow.down").frame(minWidth: 44, minHeight: 44) }
                     .accessibilityLabel("排序").help("排序")
-            }.padding(.horizontal).padding(.vertical, 10)
+            }.padding(.horizontal, 16).padding(.vertical, 4).background(.bar)
             if useDates {
                 HStack {
                     DatePicker("从", selection: $from, in: ...to, displayedComponents: .date)
@@ -210,6 +277,7 @@ struct RecordBrowser: View {
                         ForEach(results) { record in
                             PhotoTile(record: record, selected: library.selectedIDs.contains(record.id),
                                 protected: library.isProtected(record.id),
+                                selectionActive: !library.selectedIDs.isEmpty,
                                 select: { library.toggleSelection(record.id) },
                                 preview: { preview = record })
                         }
@@ -217,6 +285,7 @@ struct RecordBrowser: View {
                 }
             }
         }
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "文字、分类、文件名或年份")
@@ -299,7 +368,8 @@ struct GroupDetailView: View {
                 ForEach(group.memberIDs.compactMap { library.record($0) }) { record in
                     VStack(alignment: .leading, spacing: 6) {
                         PhotoTile(record: record, selected: library.selectedIDs.contains(record.id),
-                            protected: library.isProtected(record.id), select: { library.toggleSelection(record.id) }, preview: { preview = record })
+                            protected: library.isProtected(record.id), selectionActive: !library.selectedIDs.isEmpty,
+                            select: { library.toggleSelection(record.id) }, preview: { preview = record })
                         if record.id == group.suggestedKeepID { Label("推荐保留", systemImage: "checkmark.shield").font(.caption).foregroundStyle(.green) }
                     }
                 }
