@@ -1,11 +1,13 @@
 # IOS- / 相册整理 PhotoCleaner
 
-面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。旧版已安装运行；0.2.0 的验证记录见 [验证说明](docs/VERIFICATION.md)，新版真机验收待执行。
+面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。0.3.1 已通过云端编译、29 项核心测试、8 项原生测试和 3 项界面流程；目标手机的大图库耗时待验证，见 [验证说明](docs/VERIFICATION.md)。
 
 ## 已实现的范围
 
+- 0.3.1：待删确认与全屏整理页显示处理状态；系统删除成功后异步按 ID 清理缓存，相簿保护读取移到后台，避免删除后继续等待全库索引维护。
 - 0.3.0：四向滑动整理、自定义手势、撤销、待删除/待收藏复核；三列网格与横向双行浏览。
 - 全部照片、视频、截图、实况、收藏、相簿、月份和照片坐标地点分组；直接整理不依赖全库分析。
+- 读取完整连拍成员，按单帧计数；连拍中的相近画面经分析进入相似候选，最终由人工核对。
 - 本机图片 JPEG / 视频 MP4 压缩预览及另存副本，原件默认保留；实际输出不变小则拒绝保存，删除原件前复核版本与副本。
 - 普通静态照片按原始资源 SHA-256 检查精确重复；复杂资源、实况照片和视频不纳入精确重复组。
 - 结合拍摄时间、感知哈希及 Vision 图像特征生成保守的相似候选，人工对比后选择。
@@ -18,7 +20,7 @@
 
 按 [Windows 安装说明](docs/INSTALL-WINDOWS.md) 在 GitHub macOS runner 编译，再在自己的 Windows 电脑用 Sideloadly 签名安装。GitHub 不需要 Apple 账号、密码或签名证书；未签名 IPA 不能直接安装到 iPhone。
 
-免费 Apple 账号需要周期续签。源码位于 `codex/initial-app` 分支；[0.2.0 已验证构建与安装包](https://github.com/wlhbstt/IOS-/actions/runs/43366426837)见该任务的 Artifacts。构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
+免费 Apple 账号需要周期续签。源码位于 `codex/initial-app` 分支；[0.3.1 已验证构建与安装包](https://github.com/wlhbstt/IOS-/actions/runs/43401823686)见该任务的 `PhotoCleaner-unsigned-22` Artifact。构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
 
 ## 验证与构建
 

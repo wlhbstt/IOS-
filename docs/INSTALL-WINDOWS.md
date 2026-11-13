@@ -4,7 +4,7 @@
 
 ## 1. 获取云端未签名 IPA
 
-1. 当前代码已上传到 [仓库的功能分支](https://github.com/wlhbstt/IOS-/tree/codex/initial-app)。可直接打开 [0.2.0 成功构建](https://github.com/wlhbstt/IOS-/actions/runs/43366426837) 获取 `PhotoCleaner-unsigned-15` 安装包；不要上传照片、缓存、Apple 密码、证书或描述文件。
+1. 当前代码已上传到 [仓库的功能分支](https://github.com/wlhbstt/IOS-/tree/codex/initial-app)。可直接打开 [0.3.1 成功构建](https://github.com/wlhbstt/IOS-/actions/runs/43401823686) 获取 `PhotoCleaner-unsigned-22` 安装包；不要上传照片、缓存、Apple 密码、证书或描述文件。
 2. 需要重新生成时，在该分支推送修改即可触发 `iOS unsigned build`。也可在已有运行上选择 `Re-run all jobs`；当前工作流尚未合入默认分支，可能不显示 `Run workflow` 按钮。
 3. 等待任务完整成功。日志应包含核心测试、Xcode 版本与 SDK、真机 Release 编译和 IPA 检查。失败时查看首个报错；失败任务不会发布 IPA。
 4. 在成功任务的 Artifacts 中下载 `PhotoCleaner-unsigned-<运行号>`，解压外层 ZIP，得到 `PhotoCleaner-unsigned.ipa`。产物保留 7 天，过期可重新构建。
