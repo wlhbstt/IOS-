@@ -25,22 +25,31 @@ final class LibraryUITests: XCTestCase {
         }
         let homeReady = app.staticTexts["清理项目"].waitForExistence(timeout: 30)
         if !homeReady {
-            capture("00-permission-failure", app: app)
+            capture("00-permission-failure")
             print(app.debugDescription)
             print(XCUIApplication(bundleIdentifier: "com.apple.springboard").debugDescription)
         }
         XCTAssertTrue(homeReady)
-        capture("01-cleanup", app: app)
+        let analyzedMetric = app.otherElements["library.metric.已分析"]
+        let pendingMetric = app.otherElements["library.metric.待分析"]
+        XCTAssertTrue(pendingMetric.waitForExistence(timeout: 10))
+        let analyzedBefore = Int(analyzedMetric.value as? String ?? "")
+        let pendingBefore = Int(pendingMetric.value as? String ?? "")
+        XCTAssertNotNil(analyzedBefore)
+        XCTAssertNotNil(pendingBefore)
+        let expectedAnalyzed = (analyzedBefore ?? 0) + (pendingBefore ?? 0)
+        XCTAssertGreaterThan(expectedAnalyzed, 0)
+        capture("01-cleanup")
         app.buttons["library.all"].tap()
         XCTAssertTrue(app.navigationBars["全部项目"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["选择待删"].firstMatch.waitForExistence(timeout: 15))
-        capture("02-photos", app: app)
+        capture("02-photos")
         app.buttons["选择待删"].firstMatch.tap()
         XCTAssertTrue(app.buttons["library.delete"].waitForExistence(timeout: 5))
-        capture("03-selection", app: app)
+        capture("03-selection")
         app.tabBars.buttons["搜索"].tap()
         XCTAssertTrue(app.navigationBars["搜索"].waitForExistence(timeout: 10))
-        capture("04-search", app: app)
+        capture("04-search")
         app.tabBars.buttons["清理"].tap()
         app.buttons["取消选择"].firstMatch.tap()
         app.navigationBars.buttons["相册整理"].tap()
@@ -48,9 +57,8 @@ final class LibraryUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(app.buttons["library.analyze"].waitForExistence(timeout: 60))
-        let metric = app.otherElements["library.metric.已分析"]
-        XCTAssertEqual(metric.value as? String, "3")
-        capture("05-analyzed", app: app)
+        XCTAssertEqual(analyzedMetric.value as? String, "\(expectedAnalyzed)")
+        capture("05-analyzed")
         app.buttons["library.all"].tap()
         let photoCount = app.buttons.matching(identifier: "选择待删").count
         app.buttons["选择待删"].firstMatch.tap()
@@ -59,7 +67,7 @@ final class LibraryUITests: XCTestCase {
         let dialog = appDialog.waitForExistence(timeout: 5) ? appDialog
             : XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
         XCTAssertTrue(dialog.waitForExistence(timeout: 10))
-        capture("06-system-delete-confirmation", app: app)
+        capture("06-system-delete-confirmation")
         let confirm = dialog.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Delete' OR label BEGINSWITH '删除'")).firstMatch
         XCTAssertTrue(confirm.exists)
         confirm.tap()
@@ -69,11 +77,11 @@ final class LibraryUITests: XCTestCase {
             app.buttons.matching(identifier: "选择待删").count == photoCount - 1
         }, evaluatedWith: app)
         waitForExpectations(timeout: 15)
-        capture("07-after-delete", app: app)
+        capture("07-after-delete")
     }
 
     @MainActor
-    private func capture(_ name: String, app: XCUIApplication) {
+    private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
