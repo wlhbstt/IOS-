@@ -15,12 +15,21 @@ final class LibraryUITests: XCTestCase {
         app.launch()
         if app.buttons["选择照片访问范围"].waitForExistence(timeout: 3) {
             app.buttons["选择照片访问范围"].tap()
-            let permissions = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-            let allow = permissions.buttons.matching(NSPredicate(format:
-                "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完全访问' OR label CONTAINS '所有照片'")).firstMatch
-            if allow.waitForExistence(timeout: 3) { allow.tap() }
+            app.activate()
+            for permissions in [app, XCUIApplication(bundleIdentifier: "com.apple.springboard")] {
+                let allow = permissions.buttons.matching(NSPredicate(format:
+                    "label CONTAINS[c] 'Full Access' OR label CONTAINS[c] 'All Photos' OR label CONTAINS '完全访问' OR label CONTAINS '所有照片'")).firstMatch
+                if allow.waitForExistence(timeout: 3) { allow.tap(); break }
+            }
+            if !app.staticTexts["清理项目"].exists { app.tap() }
         }
-        XCTAssertTrue(app.staticTexts["清理项目"].waitForExistence(timeout: 30))
+        let homeReady = app.staticTexts["清理项目"].waitForExistence(timeout: 30)
+        if !homeReady {
+            capture("00-permission-failure", app: app)
+            print(app.debugDescription)
+            print(XCUIApplication(bundleIdentifier: "com.apple.springboard").debugDescription)
+        }
+        XCTAssertTrue(homeReady)
         capture("01-cleanup", app: app)
         app.buttons["library.all"].tap()
         XCTAssertTrue(app.navigationBars["全部项目"].waitForExistence(timeout: 10))
@@ -65,7 +74,7 @@ final class LibraryUITests: XCTestCase {
 
     @MainActor
     private func capture(_ name: String, app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
