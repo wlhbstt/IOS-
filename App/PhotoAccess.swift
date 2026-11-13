@@ -87,9 +87,15 @@ struct AlbumChoice: Identifiable {
 final class PhotoAccess: @unchecked Sendable {
     private var images: PHImageManager { .default() }
 
-    func assets() -> [PHAsset] {
+    static func fetchOptions() -> PHFetchOptions {
         let options = PHFetchOptions()
         options.includeHiddenAssets = false
+        options.includeAllBurstAssets = true
+        return options
+    }
+
+    func assets() -> [PHAsset] {
+        let options = Self.fetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d",
                                         PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
@@ -99,12 +105,12 @@ final class PhotoAccess: @unchecked Sendable {
     }
 
     func asset(_ id: String) -> PHAsset? {
-        PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+        PHAsset.fetchAssets(withLocalIdentifiers: [id], options: Self.fetchOptions()).firstObject
     }
 
     func metadata(ids: Set<String>) -> [MediaRecord] {
         var records: [MediaRecord] = []
-        PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil).enumerateObjects { asset, _, _ in
+        PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: Self.fetchOptions()).enumerateObjects { asset, _, _ in
             records.append(self.metadata(asset))
         }
         return records
@@ -145,7 +151,7 @@ final class PhotoAccess: @unchecked Sendable {
         var result = Set<String>()
         PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: Array(albumIDs), options: nil)
             .enumerateObjects { album, _, _ in
-                PHAsset.fetchAssets(in: album, options: nil).enumerateObjects { asset, _, _ in
+                PHAsset.fetchAssets(in: album, options: Self.fetchOptions()).enumerateObjects { asset, _, _ in
                     result.insert(asset.localIdentifier)
                 }
             }
@@ -214,7 +220,7 @@ final class PhotoAccess: @unchecked Sendable {
     }
 
     func delete(ids: Set<String>) async throws {
-        let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil)
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: Self.fetchOptions())
         guard assets.count == ids.count else { throw PhotoAccessError.missing }
         var canDelete = true
         assets.enumerateObjects { asset, _, _ in

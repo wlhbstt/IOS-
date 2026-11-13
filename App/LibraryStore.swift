@@ -461,7 +461,7 @@ final class LibraryStore: ObservableObject {
         pause()
         let ids = pendingFavoriteIDs
         do {
-            let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: nil)
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: Array(ids), options: PhotoAccess.fetchOptions())
             guard assets.count == ids.count else { throw PhotoAccessError.missing }
             try await PHPhotoLibrary.shared().performChanges {
                 assets.enumerateObjects { asset, _, _ in PHAssetChangeRequest(for: asset).isFavorite = true }
