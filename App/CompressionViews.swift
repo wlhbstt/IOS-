@@ -105,6 +105,7 @@ private struct CompressionDetailView: View {
                             VideoPlayer(player: player).frame(height: 260)
                         } else if let previewImage {
                             Image(uiImage: previewImage).resizable().scaledToFit().frame(maxHeight: 300)
+                                .accessibilityLabel("压缩副本预览").accessibilityIdentifier("compression.previewImage")
                         } else { ProgressView() }
                         LabeledContent("副本大小", value: mediaSize(draft.outputBytes))
                             .accessibilityIdentifier("compression.outputBytes").accessibilityValue(String(draft.outputBytes))
@@ -123,7 +124,7 @@ private struct CompressionDetailView: View {
                             previewImage = nil
                             model.discard()
                         }.frame(minHeight: 44).disabled(busy)
-                    }.accessibilityIdentifier("compression.preview")
+                    }
                 } else {
                     Section {
                         Button("生成压缩预览", systemImage: "arrow.down.right.and.arrow.up.left") {
@@ -153,7 +154,7 @@ private struct CompressionDetailView: View {
                             Label("原件受收藏或相簿保护", systemImage: "lock.shield").foregroundStyle(.secondary)
                         }
                     } else { Label("原件已不在当前相册范围", systemImage: "photo.badge.checkmark") }
-                }.accessibilityIdentifier("compression.result")
+                }
             }
             if model.isSaving { Section { ProgressView("正在保存副本…") } }
             if let error = model.error { Section { Text(error).foregroundStyle(.red) } }

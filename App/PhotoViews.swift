@@ -277,6 +277,7 @@ struct DeletionReviewView: View {
                     Button("确认收藏 \(library.pendingFavoriteIDs.count) 项", systemImage: "heart") {
                         Task { await library.confirmFavorites() }
                     }.disabled(selected.isEmpty || library.isSavingFavorites || library.isDeleting || library.isReloading)
+                        .labelStyle(.titleAndIcon)
                         .accessibilityIdentifier("pending.favorite")
                 } else {
                 Button("删除 \(library.selectedIDs.count) 项", systemImage: "trash", role: .destructive) {
@@ -286,6 +287,7 @@ struct DeletionReviewView: View {
                     }
                 }
                     .disabled(library.selectedIDs.isEmpty || library.isDeleting || library.isReloading || library.isSavingFavorites)
+                    .labelStyle(.titleAndIcon).tint(.red)
                     .accessibilityIdentifier("pending.delete")
                 }
             }

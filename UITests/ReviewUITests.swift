@@ -127,7 +127,7 @@ final class ReviewUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         app.swipeUp()
         app.buttons["compression.prepare"].tap()
-        XCTAssertTrue(app.staticTexts["compression.preview"].waitForExistence(timeout: 60))
+        XCTAssertTrue(app.staticTexts["压缩预览"].waitForExistence(timeout: 60))
         let save = app.buttons["compression.save"]
         for _ in 0..<6 {
             if save.exists && save.isHittable { break }
@@ -136,6 +136,7 @@ final class ReviewUITests: XCTestCase {
         let ready = save.waitForExistence(timeout: 10) && save.isHittable
         if !ready { print(app.debugDescription) }
         XCTAssertTrue(ready)
+        XCTAssertTrue(app.images["compression.previewImage"].waitForExistence(timeout: 15))
         capture("16-compression-preview")
         save.tap()
         XCTAssertTrue(app.staticTexts["原件已保留"].waitForExistence(timeout: 30))
