@@ -23,7 +23,7 @@ mkdir -p "$repo_dir/build"
 output="$repo_dir/build/PhotoCleaner-unsigned.ipa"
 rm -f "$output"
 run_dir="$(mktemp -d "$repo_dir/build/ios.XXXXXX")"
-trap 'if [ -d "$run_dir/Tests.xcresult" ]; then xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews" || true; fi; rm -rf "$run_dir"' EXIT
+trap 'if [ -d "$run_dir/Tests.xcresult" ]; then mkdir -p "$repo_dir/build/previews"; xcrun simctl spawn "$simulator_id" log show --last 6m --style compact --predicate '\''process == "PhotoCleaner" OR subsystem BEGINSWITH "com.apple.photos"'\'' > "$repo_dir/build/previews/photokit.log" 2>&1 || true; xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews" || true; fi; rm -rf "$run_dir"' EXIT
 
 echo "Running PhotoCleanerCore tests"
 swift test
@@ -44,7 +44,7 @@ process.stdin.on("end", () => {
 xcrun simctl boot "$simulator_id" || true
 simulator_args=(-project PhotoCleaner.xcodeproj -scheme PhotoCleaner -configuration Debug
     -destination "platform=iOS Simulator,id=$simulator_id" -derivedDataPath "$run_dir/Simulator"
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO)
+    CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES)
 xcodebuild "${simulator_args[@]}" -parallel-testing-enabled NO build-for-testing
 xcrun simctl bootstatus "$simulator_id" -b
 xcrun simctl install "$simulator_id" "$run_dir/Simulator/Build/Products/Debug-iphonesimulator/PhotoCleaner.app"
@@ -54,6 +54,8 @@ for photo in photo-1500530855697-b586d89ba3ee photo-1470071459604-3b5ec3a7fe05 p
         "https://images.unsplash.com/$photo?w=640&q=75" -o "$run_dir/$photo.jpg"
     xcrun simctl addmedia "$simulator_id" "$run_dir/$photo.jpg"
 done
+echo "Verifying simulator fixture resources"
+find "$HOME/Library/Developer/CoreSimulator/Devices/$simulator_id/data/Media/DCIM" -type f -exec ls -l {} +
 xcodebuild "${simulator_args[@]}" \
     -parallel-testing-enabled NO -destination-timeout 120 \
     -test-timeouts-enabled YES -maximum-test-execution-time-allowance 240 \
