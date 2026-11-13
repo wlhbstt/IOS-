@@ -14,6 +14,7 @@ struct PhotoThumbnail: View {
     @EnvironmentObject private var library: LibraryStore
     let id: String
     @State private var image: UIImage?
+    @State private var failure: String?
 
     var body: some View {
         GeometryReader { geometry in
@@ -22,18 +23,25 @@ struct PhotoThumbnail: View {
                 if let image {
                     Image(uiImage: image).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                } else { Image(systemName: "photo").foregroundStyle(.secondary) }
+                } else { Image(systemName: failure == nil ? "photo" : "icloud.and.arrow.down").foregroundStyle(.secondary) }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .task(id: id) {
             image = nil
-            let loaded = try? await library.photos.image(id: id, size: CGSize(width: 280, height: 280), thumbnail: true)
-            guard !Task.isCancelled else { return }
-            image = loaded
+            failure = nil
+            do {
+                let loaded = try await library.photos.image(id: id, size: CGSize(width: 280, height: 280), thumbnail: true)
+                guard !Task.isCancelled else { return }
+                image = loaded
+            } catch is CancellationError { return }
+            catch { failure = error.localizedDescription }
         }
         .onDisappear { image = nil }
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(image != nil ? "照片预览" : (failure == nil ? "照片加载中" : "照片暂不可读"))
+        .accessibilityValue(failure ?? "")
     }
 }
 

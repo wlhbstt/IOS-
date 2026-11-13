@@ -227,9 +227,14 @@ final class LibraryStore: ObservableObject {
                         let image = try await withTaskCancellationHandler(operation: {
                             try await imageTask.value
                         }, onCancel: { imageTask.cancel() })
-                        record = try await self.analyzer.analyze(record, image: image)
+                        record = try await self.analyzer.analyze(record, image: image,
+                            cpuOnly: UIApplication.shared.applicationState != .active)
                     } catch is CancellationError { break }
                     catch {
+                        if UIApplication.shared.applicationState != .active {
+                            self.pause(stopRequest: false)
+                            break
+                        }
                         record.analysisState = .unavailable
                         failedAnalyses += 1
                         analysisError = error.localizedDescription

@@ -145,6 +145,7 @@ struct CleanupView: View {
                                 Spacer()
                                 Image(systemName: "arrow.right")
                             }.font(.subheadline.weight(.semibold)).padding(15).frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBackground))
                         .accessibilityIdentifier("library.analyze")

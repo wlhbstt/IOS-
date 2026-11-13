@@ -43,6 +43,9 @@ final class LibraryUITests: XCTestCase {
         app.buttons["library.all"].tap()
         XCTAssertTrue(app.navigationBars["全部项目"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["选择待删"].firstMatch.waitForExistence(timeout: 15))
+        let previewReady = app.images["照片预览"].firstMatch.waitForExistence(timeout: 30)
+        if !previewReady { print(app.debugDescription) }
+        XCTAssertTrue(previewReady)
         capture("02-photos")
         app.buttons["选择待删"].firstMatch.tap()
         XCTAssertTrue(app.buttons["library.delete"].waitForExistence(timeout: 5))
@@ -54,6 +57,8 @@ final class LibraryUITests: XCTestCase {
         app.buttons["取消选择"].firstMatch.tap()
         app.navigationBars.buttons["相册整理"].tap()
         app.buttons["library.analyze"].tap()
+        XCTAssertTrue(app.buttons["暂停扫描"].waitForExistence(timeout: 5)
+            || analyzedMetric.value as? String == "\(expectedAnalyzed)")
         XCUIDevice.shared.press(.home)
         app.activate()
         let completedAnalysis = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in

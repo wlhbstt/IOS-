@@ -4,11 +4,11 @@ import Vision
 import PhotoCleanerCore
 
 actor ImageAnalyzer {
-    func analyze(_ source: MediaRecord, image: UIImage) throws -> MediaRecord {
-        try autoreleasepool { try analyzeImage(source, image: image) }
+    func analyze(_ source: MediaRecord, image: UIImage, cpuOnly: Bool) throws -> MediaRecord {
+        try autoreleasepool { try analyzeImage(source, image: image, cpuOnly: cpuOnly) }
     }
 
-    private func analyzeImage(_ source: MediaRecord, image: UIImage) throws -> MediaRecord {
+    private func analyzeImage(_ source: MediaRecord, image: UIImage, cpuOnly: Bool) throws -> MediaRecord {
         try Task.checkCancellation()
         guard let cgImage = image.cgImage else { throw PhotoAccessError.unavailable }
         let text = VNRecognizeTextRequest()
@@ -16,9 +16,11 @@ actor ImageAnalyzer {
         text.recognitionLanguages = ["zh-Hans", "en-US"]
         let classification = VNClassifyImageRequest()
         let feature = VNGenerateImageFeaturePrintRequest()
+        let requests: [VNRequest] = source.isScreenshot ? [text] : [text, classification, feature]
+        // iOS 18 does not grant this app GPU access while backgrounded.
+        if cpuOnly { requests.forEach { $0.usesCPUOnly = true } }
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: image.imageOrientation.cgOrientation)
-        if source.isScreenshot { try handler.perform([text]) }
-        else { try handler.perform([text, classification, feature]) }
+        try handler.perform(requests)
         try Task.checkCancellation()
 
         var record = source
