@@ -69,6 +69,7 @@ final class ReviewUITests: XCTestCase {
         commit.tap()
         let dialog = systemDialog(app)
         XCTAssertTrue(dialog.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["deletion.status"].exists, "删除确认页必须显示处理状态，不能只禁用整页")
         let cancel = dialog.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Cancel' OR label BEGINSWITH '取消' OR label MATCHES[c] 'Don.t Allow' OR label == '不允许'")).firstMatch
         XCTAssertTrue(cancel.exists)
         cancel.tap()
