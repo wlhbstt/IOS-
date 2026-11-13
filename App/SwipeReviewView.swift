@@ -140,11 +140,6 @@ struct SwipeReviewView: View {
                         if max(abs(value.translation.width), abs(value.translation.height)) >= 72 { decide(decision) }
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { offset = .zero }
                     })
-                .accessibilityIdentifier("review.media")
-                .accessibilityAction(named: "加入待删") { decide(.delete) }
-                .accessibilityAction(named: "保留") { decide(.keep) }
-                .accessibilityAction(named: "加入待收藏") { decide(.favorite) }
-                .accessibilityAction(named: "跳过") { decide(.skip) }
         }.padding(.horizontal, 16).padding(.top, 16).clipped()
     }
 

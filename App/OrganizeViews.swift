@@ -77,7 +77,7 @@ struct OrganizeView: View {
                             Spacer()
                             Image(systemName: "arrow.right")
                         }
-                        .font(.headline).padding(16).frame(maxWidth: .infinity)
+                        .font(.headline).padding(16).frame(maxWidth: .infinity).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBackground))
                     .background(LibraryStyle.accent, in: RoundedRectangle(cornerRadius: 8))

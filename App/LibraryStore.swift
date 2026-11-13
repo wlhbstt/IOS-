@@ -569,12 +569,9 @@ final class LibraryStore: ObservableObject {
             let current = await Task.detached(priority: .userInitiated) { [photos] in
                 photos.metadata(ids: relevantIDs)
             }.value.map { metadata in records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata }
-            if let expectedModification {
-                guard current.contains(where: { $0.id == expectedModification.id && $0.modifiedAt == expectedModification.date }),
-                      requiredCopyID.map({ id in current.contains(where: { $0.id == id }) }) == true else {
-                    notice = LibraryNotice(message: "原件已变化或压缩副本已不可访问，本次未删除。")
-                    return
-                }
+            if let expectedModification, let requiredCopyID {
+                try DeletionPolicy.validateCompressedOriginal(originalID: expectedModification.id,
+                    modifiedAt: expectedModification.date, copyID: requiredCopyID, currentRecords: current)
             }
             let protection = photos.protectedIDs(albumIDs: protectedAlbumIDs)
             try DeletionPolicy.validateUnchanged(selectedIDs: ids, reviewedRecords: reviewedRecords,

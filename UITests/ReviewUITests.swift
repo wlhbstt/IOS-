@@ -15,7 +15,9 @@ final class ReviewUITests: XCTestCase {
         capture("08-organize")
         app.buttons["review.start"].tap()
         let image = app.images["review.image"].firstMatch
-        XCTAssertTrue(image.waitForExistence(timeout: 30))
+        let loaded = image.waitForExistence(timeout: 30)
+        if !loaded { capture("09-review-load-failure"); print(app.debugDescription) }
+        XCTAssertTrue(loaded)
         let progress = app.staticTexts["review.progress"]
         let pending = app.buttons["review.pending"]
         capture("09-swipe-photo")
@@ -47,8 +49,10 @@ final class ReviewUITests: XCTestCase {
         XCTAssertTrue(app.buttons["pending.favorite"].waitForExistence(timeout: 10))
         capture("11-favorite-review")
         app.buttons["pending.favorite"].tap()
-        expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["pending.favorite"])
+        expectation(for: NSPredicate(format: "label CONTAINS '0' AND enabled == false"), evaluatedWith: app.buttons["pending.favorite"])
         waitForExpectations(timeout: 30)
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: app.buttons["pending.close"])
+        waitForExpectations(timeout: 20)
         app.buttons["pending.close"].tap()
 
         let delete = app.buttons["review.delete"]
@@ -110,11 +114,17 @@ final class ReviewUITests: XCTestCase {
         XCTAssertTrue(app.buttons["library.compression"].waitForExistence(timeout: 10))
         app.buttons["library.compression"].tap()
         let fixture = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'compression.source.' AND identifier CONTAINS[c] 'compression-fixture'")).firstMatch
+        for _ in 0..<6 {
+            if fixture.exists && fixture.isHittable { break }
+            app.swipeUp()
+        }
         XCTAssertTrue(fixture.waitForExistence(timeout: 15))
         fixture.tap()
-        let accept = app.switches["接受有损转换"]
+        let accept = app.switches["compression.acceptLoss"]
         XCTAssertTrue(accept.waitForExistence(timeout: 5))
-        accept.tap()
+        accept.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+        expectation(for: NSPredicate(format: "value == '1'"), evaluatedWith: accept)
+        waitForExpectations(timeout: 5)
         app.swipeUp()
         app.buttons["compression.prepare"].tap()
         let save = app.buttons["compression.save"]

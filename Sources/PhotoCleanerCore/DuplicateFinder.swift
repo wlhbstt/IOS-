@@ -58,6 +58,13 @@ public enum DeletionPolicyError: Error, Equatable, LocalizedError {
 }
 
 public enum DeletionPolicy {
+    public static func validateCompressedOriginal(originalID: String, modifiedAt: Date?, copyID: String, currentRecords: [MediaRecord]) throws {
+        guard originalID != copyID, currentRecords.contains(where: { $0.id == copyID }),
+              currentRecords.contains(where: { $0.id == originalID && $0.modifiedAt == modifiedAt }) else {
+            throw DeletionPolicyError.changedSinceReview
+        }
+    }
+
     public static func validateUnchanged(selectedIDs: Set<String>, reviewedRecords: [MediaRecord], currentRecords: [MediaRecord], groups: [DuplicateGroup]) throws {
         var relevantIDs = selectedIDs
         for group in groups where group.memberIDs.contains(where: selectedIDs.contains) {
