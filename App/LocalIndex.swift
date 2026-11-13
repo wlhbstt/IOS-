@@ -68,6 +68,17 @@ actor LocalIndex {
         try write(changed)
     }
 
+    func remove(ids: Set<String>) throws {
+        var changed = Set<Int>()
+        for id in ids {
+            let bucket = shard(id)
+            if pages[bucket]?.records.removeValue(forKey: id) != nil { changed.insert(bucket) }
+            let url = featureURL(id)
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
+        if !changed.isEmpty { try write(changed) }
+    }
+
     func clear() throws {
         pages.removeAll()
         if FileManager.default.fileExists(atPath: directory.path) {

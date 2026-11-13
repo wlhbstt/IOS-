@@ -62,4 +62,27 @@ final class LocalIndexTests: XCTestCase {
         let records = try await index.load()
         XCTAssertEqual(Set(records.keys), ["new"])
     }
+
+    func testTargetedRemovalPreservesLargeIndexAndRecordsAddedAfterReview() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let index = LocalIndex(directory: directory)
+        var records = (0..<8000).map { MediaRecord(id: "large/\($0)", text: "保留的搜索文字", analysisState: .complete) }
+        records[0].featurePrint = Data([1, 2])
+        records[1].featurePrint = Data([3, 4])
+        try await index.upsert(records)
+        try await index.upsert([MediaRecord(id: "arrived-later", text: "复核后新增")])
+        let removed: Set<String> = [records[0].id, records[7999].id]
+        try await index.remove(ids: removed)
+        try await index.remove(ids: removed.union(["already-missing"]))
+        let reopened = LocalIndex(directory: directory)
+        let loaded = try await reopened.load()
+        XCTAssertEqual(Set(loaded.keys), Set(records.map(\.id)).subtracting(removed).union(["arrived-later"]))
+        XCTAssertEqual(loaded[records[1].id]?.text, records[1].text)
+        XCTAssertEqual(loaded["arrived-later"]?.text, "复核后新增")
+        let deletedFeature = await reopened.featurePrint(id: records[0].id)
+        let retainedFeature = await reopened.featurePrint(id: records[1].id)
+        XCTAssertNil(deletedFeature)
+        XCTAssertEqual(retainedFeature, records[1].featurePrint)
+    }
 }

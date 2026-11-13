@@ -22,6 +22,7 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var isScanning = false
     @Published private(set) var isReloading = false
     @Published private(set) var isDeleting = false
+    @Published private(set) var deletionStatus = ""
     @Published private(set) var isSavingFavorites = false
     @Published private(set) var processed = 0
     @Published private(set) var scanTotal = 0
@@ -143,16 +144,18 @@ final class LibraryStore: ObservableObject {
                 records = try await index.load()
                 indexLoaded = true
             }
+            let protectedAlbums = protectedAlbumIDs
             let catalogue = await Task.detached(priority: .userInitiated) { [photos] in
-                photos.assets().map { ($0, photos.metadata($0)) }
+                (assets: photos.assets().map { ($0, photos.metadata($0)) },
+                 albums: photos.albums(), protection: photos.protectedIDs(albumIDs: protectedAlbums))
             }.value
-            guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == authorization else {
+            guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == authorization, protectedAlbums == protectedAlbumIDs else {
                 isReloading = false
                 await reload()
                 return
             }
             var refreshed: [String: MediaRecord] = [:]
-            for (_, metadata) in catalogue {
+            for (_, metadata) in catalogue.assets {
                 refreshed[metadata.id] = records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata
             }
             if !selectedIDs.isEmpty {
@@ -165,9 +168,9 @@ final class LibraryStore: ObservableObject {
                 }
             }
             records = refreshed
-            assetMap = Dictionary(uniqueKeysWithValues: catalogue.map { ($0.0.localIdentifier, $0.0) })
-            albums = photos.albums()
-            protectedIDs = photos.protectedIDs(albumIDs: protectedAlbumIDs)
+            assetMap = Dictionary(uniqueKeysWithValues: catalogue.assets.map { ($0.0.localIdentifier, $0.0) })
+            albums = catalogue.albums
+            protectedIDs = catalogue.protection
             selectedIDs.formIntersection(Set(records.keys))
             selectedIDs.subtract(protectedIDs)
             selectedIDs = selectedIDs.filter { records[$0]?.isFavorite == false }
@@ -556,8 +559,10 @@ final class LibraryStore: ObservableObject {
         let reviewedGroups = (exactGroups + similarGroups).filter { $0.memberIDs.contains(where: ids.contains) }
         let relevantIDs = ids.union(reviewedGroups.flatMap(\.memberIDs)).union(requiredCopyID.map { [$0] } ?? [])
         let reviewedRecords = relevantIDs.compactMap { records[$0] }
+        deletionStatus = "正在核对待删项目"
         isDeleting = true
-        defer { isDeleting = false }
+        defer { isDeleting = false; deletionStatus = "" }
+        changeTask?.cancel()
         pause()
         scanEpoch = UUID()
         scanTask = nil
@@ -566,27 +571,32 @@ final class LibraryStore: ObservableObject {
         do {
             authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
             guard hasAccess else { throw PhotoAccessError.missing }
-            let current = await Task.detached(priority: .userInitiated) { [photos] in
-                photos.metadata(ids: relevantIDs)
-            }.value.map { metadata in records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata }
+            let checked = await Task.detached(priority: .userInitiated) { [photos, protectedAlbumIDs] in
+                (records: photos.metadata(ids: relevantIDs), protection: photos.protectedIDs(albumIDs: protectedAlbumIDs))
+            }.value
+            let current = checked.records.map { metadata in records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata }
             if let expectedModification, let requiredCopyID {
                 try DeletionPolicy.validateCompressedOriginal(originalID: expectedModification.id,
                     modifiedAt: expectedModification.date, copyID: requiredCopyID, currentRecords: current)
             }
-            let protection = photos.protectedIDs(albumIDs: protectedAlbumIDs)
             try DeletionPolicy.validateUnchanged(selectedIDs: ids, reviewedRecords: reviewedRecords,
                 currentRecords: current, groups: reviewedGroups)
             try DeletionPolicy.validate(selectedIDs: ids, records: current,
-                protectedIDs: protection, groups: reviewedGroups)
+                protectedIDs: checked.protection, groups: reviewedGroups)
+            deletionStatus = "正在等待系统确认并删除 \(ids.count) 项"
             try await photos.delete(ids: ids)
+            deletionStatus = "删除已完成，正在更新列表"
             selectedIDs.subtract(ids)
             pendingFavoriteIDs.subtract(ids)
             for id in ids { records.removeValue(forKey: id); assetMap.removeValue(forKey: id) }
             exactGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
             similarGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
             await publishSnapshot()
-            do { try await index.retain(ids: Set(records.keys)) }
-            catch { notice = LibraryNotice(message: "照片已删除，但本机索引更新失败，请刷新相册。") }
+            // Cache maintenance must not keep the completed Photos transaction blocking the UI.
+            Task { [index] in
+                do { try await index.remove(ids: ids) }
+                catch { notice = LibraryNotice(message: "照片已删除，但本机索引更新失败，请刷新相册。") }
+            }
         } catch {
             let failure = error as NSError
             if failure.domain == PHPhotosErrorDomain && failure.code == PHPhotosError.Code.userCancelled.rawValue { return }

@@ -88,6 +88,7 @@ struct SwipeReviewView: View {
             actions
         }
         .background(Color(uiColor: .systemBackground))
+        .disabled(busy)
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } }
@@ -106,10 +107,10 @@ struct SwipeReviewView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(pendingCount > 0 ? LibraryStyle.accent : .secondary)
-            .accessibilityIdentifier("review.pending").disabled(pendingCount == 0)
+            .accessibilityIdentifier("review.pending").disabled(pendingCount == 0 || busy)
             .background(.bar).overlay(alignment: .top) { Divider() }
         }
-        .disabled(busy)
+        .overlay { LibraryOperationProgress(identifier: "review.operation.status") }
         .sheet(isPresented: $pending) { NavigationStack { DeletionReviewView() } }
         .sheet(isPresented: $settings) { NavigationStack { ReviewGestureSettingsView() } }
         .sheet(item: $detail) { record in NavigationStack { PhotoDetailView(record: record) } }

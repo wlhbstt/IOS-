@@ -43,9 +43,7 @@ struct RootView: View {
         .alert(item: $library.notice) { notice in
             Alert(title: Text("相册整理"), message: Text(notice.message), dismissButton: .default(Text("好")))
         }
-        .overlay {
-            if library.isDeleting { ProgressView("正在处理删除请求").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)) }
-        }
+        .overlay { LibraryOperationProgress() }
     }
 
     private func openSettings() {

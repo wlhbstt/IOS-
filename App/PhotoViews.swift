@@ -219,6 +219,28 @@ final class ZoomingPhotoScrollView: UIScrollView, UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { photo }
 }
 
+struct LibraryOperationProgress: View {
+    @EnvironmentObject private var library: LibraryStore
+    var identifier = "library.operation.status"
+
+    var body: some View {
+        if library.isDeleting || library.isSavingFavorites || library.isReloading {
+            VStack(spacing: 12) {
+                ProgressView()
+                Text(library.isDeleting ? library.deletionStatus : library.isSavingFavorites ? "正在保存收藏" : "正在刷新相册")
+                    .font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
+                    .accessibilityIdentifier(identifier)
+                if library.isDeleting {
+                    Text("请完成系统确认，勿重复提交").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(20).frame(maxWidth: 280)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .padding(24).allowsHitTesting(false)
+        }
+    }
+}
+
 struct DeletionReviewView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
@@ -296,6 +318,8 @@ struct DeletionReviewView: View {
             Alert(title: Text("相册整理"), message: Text(notice.message), dismissButton: .default(Text("好")))
         }
         .sheet(item: $preview) { record in NavigationStack { PhotoDetailView(record: record) } }
+        .interactiveDismissDisabled(library.isDeleting || library.isSavingFavorites)
+        .overlay { LibraryOperationProgress(identifier: "deletion.status") }
     }
 }
 
