@@ -85,7 +85,7 @@ struct AlbumChoice: Identifiable {
 }
 
 final class PhotoAccess: @unchecked Sendable {
-    private let images = PHImageManager()
+    private var images: PHImageManager { .default() }
 
     func assets() -> [PHAsset] {
         let options = PHFetchOptions()

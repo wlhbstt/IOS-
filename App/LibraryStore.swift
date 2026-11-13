@@ -190,6 +190,8 @@ final class LibraryStore: ObservableObject {
         scanTask = Task {
             var pendingWrites: [MediaRecord] = []
             var completed = 0
+            var failedAnalyses = 0
+            var analysisError: String?
             var lastUpdate = Date()
             @MainActor func preview(_ id: String) -> Task<UIImage, Error> {
                 let edge: CGFloat = self.records[id]?.isScreenshot == true ? 1280 : 1024
@@ -229,6 +231,8 @@ final class LibraryStore: ObservableObject {
                     } catch is CancellationError { break }
                     catch {
                         record.analysisState = .unavailable
+                        failedAnalyses += 1
+                        analysisError = error.localizedDescription
                     }
                 } else if originals && record.kind == .video {
                     record.analysisState = record.originalBytes == nil ? .unavailable : .complete
@@ -261,6 +265,9 @@ final class LibraryStore: ObservableObject {
             self.scanTask = nil
             self.processed = completed
             if !Task.isCancelled { self.requestedScan = nil }
+            if !Task.isCancelled, completed > 0, failedAnalyses == completed, let analysisError {
+                self.notice = LibraryNotice(message: "本次未能分析照片：\(analysisError)")
+            }
             await self.publishSnapshot(rebuildGroups: UIApplication.shared.applicationState == .active)
             self.endExecutionTime()
             self.scheduleBackgroundAnalysis()
