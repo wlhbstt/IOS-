@@ -54,7 +54,7 @@ struct PhotoTile: View {
                 .overlay(alignment: .topTrailing) {
                     Button(action: select) {
                         Image(systemName: protected ? "lock.fill" : (selected ? "checkmark.circle.fill" : "circle"))
-                            .font(.title3).foregroundStyle(.white)
+                            .font(.title3).foregroundStyle(selected ? Color(uiColor: .systemBackground) : .white)
                             .frame(width: 44, height: 44)
                             .background(selected ? LibraryStyle.accent : .black.opacity(0.40), in: Circle())
                     }

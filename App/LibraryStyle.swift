@@ -57,5 +57,8 @@ struct LibraryMetric: View {
             Text(value.formatted()).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(color)
             Text(title).font(.caption).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title).accessibilityValue("\(value)")
+            .accessibilityIdentifier("library.metric.\(title)")
     }
 }

@@ -147,6 +147,7 @@ struct CleanupView: View {
                             }.font(.subheadline.weight(.semibold)).padding(15).frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBackground))
+                        .accessibilityIdentifier("library.analyze")
                         .background(LibraryStyle.accent, in: RoundedRectangle(cornerRadius: 8))
                         Button("读取原件大小与完全重复", systemImage: "internaldrive") { library.scan(originals: true) }
                             .font(.subheadline).frame(maxWidth: .infinity, minHeight: 44)

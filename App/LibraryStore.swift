@@ -1,4 +1,5 @@
 import Combine
+import BackgroundTasks
 import Photos
 import SwiftUI
 import PhotoCleanerCore
@@ -54,6 +55,18 @@ final class LibraryStore: ObservableObject {
     private var changeTask: Task<Void, Never>?
     private var publicationGeneration = 0
     private var matchingTask: Task<Void, Never>?
+    private var executionAllowance = UIBackgroundTaskIdentifier.invalid
+    private var scheduledAnalysisActive = false
+    private var requestedScan: Bool? {
+        get {
+            switch UserDefaults.standard.string(forKey: "requestedScan") {
+            case "quick": return false
+            case "originals": return true
+            default: return nil
+            }
+        }
+        set { UserDefaults.standard.set(newValue.map { $0 ? "originals" : "quick" }, forKey: "requestedScan") }
+    }
 
     init() {
         allowCloudDownload = UserDefaults.standard.bool(forKey: "allowCloudDownload")
@@ -61,7 +74,7 @@ final class LibraryStore: ObservableObject {
         observer.changed = { [weak self] in
             Task { @MainActor in
                 guard let self, !self.isDeleting else { return }
-                self.pause()
+                self.pause(stopRequest: false)
                 self.changeTask?.cancel()
                 self.changeTask = Task {
                     try? await Task.sleep(for: .milliseconds(400))
@@ -88,12 +101,18 @@ final class LibraryStore: ObservableObject {
     func reload() async {
         guard !isReloading, !isDeleting else { return }
         isReloading = true
-        defer { isReloading = false }
+        defer {
+            isReloading = false
+            if UIApplication.shared.applicationState == .active, let originals = requestedScan, !isScanning {
+                scan(originals: originals)
+            }
+        }
         let running = scanTask
-        pause()
+        pause(stopRequest: false)
         await running?.value
         authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard hasAccess else {
+            pause()
             records.removeAll()
             assetMap.removeAll()
             selectedIDs.removeAll()
@@ -155,12 +174,23 @@ final class LibraryStore: ObservableObject {
         scanTotal = candidates.count
         processed = 0
         isScanning = true
+        requestedScan = originals
+        retainExecutionTime()
         let network = allowCloudDownload
         scanTask = Task {
             var pendingWrites: [MediaRecord] = []
             var completed = 0
             var lastUpdate = Date()
-            for id in candidates {
+            @MainActor func preview(_ id: String) -> Task<UIImage, Error> {
+                let edge: CGFloat = self.records[id]?.isScreenshot == true ? 1280 : 1024
+                return Task { [photos = self.photos] in
+                    try await photos.image(id: id, size: CGSize(width: edge, height: edge), network: network)
+                }
+            }
+            var prefetched: (id: String, task: Task<UIImage, Error>)?
+            if !originals, let first = candidates.first { prefetched = (first, preview(first)) }
+            defer { prefetched?.task.cancel() }
+            for (offset, id) in candidates.enumerated() {
                 guard !Task.isCancelled, self.scanEpoch == epoch, var record = self.records[id],
                       let asset = self.assetMap[id] else { break }
                 if originals {
@@ -177,8 +207,14 @@ final class LibraryStore: ObservableObject {
                 guard !Task.isCancelled, self.scanEpoch == epoch else { break }
                 if !originals && record.kind == .image && record.analysisState != .complete {
                     do {
-                        let edge: CGFloat = record.isScreenshot ? 1280 : 1024
-                        let image = try await self.photos.image(id: id, size: CGSize(width: edge, height: edge), network: network)
+                        let imageTask = prefetched?.id == id ? prefetched!.task : preview(id)
+                        if offset + 1 < candidates.count {
+                            let next = candidates[offset + 1]
+                            prefetched = (next, preview(next))
+                        } else { prefetched = nil }
+                        let image = try await withTaskCancellationHandler(operation: {
+                            try await imageTask.value
+                        }, onCancel: { imageTask.cancel() })
                         record = try await self.analyzer.analyze(record, image: image)
                     } catch is CancellationError { break }
                     catch {
@@ -192,7 +228,7 @@ final class LibraryStore: ObservableObject {
                 record.featurePrint = nil
                 self.records[id] = record
                 completed += 1
-                if pendingWrites.count >= 64 {
+                if pendingWrites.count >= 64 || Date().timeIntervalSince(lastUpdate) >= 3 {
                     do { try await self.index.upsert(pendingWrites) }
                     catch { self.notice = LibraryNotice(message: "扫描结果保存失败：\(error.localizedDescription)"); break }
                     pendingWrites.removeAll(keepingCapacity: true)
@@ -214,12 +250,84 @@ final class LibraryStore: ObservableObject {
             self.isScanning = false
             self.scanTask = nil
             self.processed = completed
-            await self.publishSnapshot()
+            if !Task.isCancelled { self.requestedScan = nil }
+            await self.publishSnapshot(rebuildGroups: UIApplication.shared.applicationState == .active)
+            self.endExecutionTime()
+            self.scheduleBackgroundAnalysis()
+            if Task.isCancelled, UIApplication.shared.applicationState == .active, let mode = self.requestedScan {
+                self.scan(originals: mode)
+            }
         }
     }
 
-    func pause() {
+    func pause(stopRequest: Bool = true) {
+        if stopRequest {
+            requestedScan = nil
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AnalysisAppDelegate.taskIdentifier)
+            endExecutionTime()
+        }
         scanTask?.cancel()
+    }
+
+    func becameActive() async {
+        if !isScanning { await reload() }
+        if let originals = requestedScan, !isScanning { scan(originals: originals) }
+        if isScanning { retainExecutionTime() }
+    }
+
+    func enteredBackground() {
+        scheduleBackgroundAnalysis()
+    }
+
+    private func retainExecutionTime() {
+        guard executionAllowance == .invalid, !scheduledAnalysisActive else { return }
+        executionAllowance = UIApplication.shared.beginBackgroundTask(withName: "Photo analysis") { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let allowance = self.executionAllowance
+                let running = self.scanTask
+                self.pause(stopRequest: false)
+                await running?.value
+                if self.executionAllowance == allowance { self.endExecutionTime() }
+            }
+        }
+    }
+
+    private func endExecutionTime() {
+        guard executionAllowance != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(executionAllowance)
+        executionAllowance = .invalid
+    }
+
+    private func scheduleBackgroundAnalysis() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AnalysisAppDelegate.taskIdentifier)
+        guard requestedScan != nil else { return }
+        let request = BGProcessingTaskRequest(identifier: AnalysisAppDelegate.taskIdentifier)
+        request.requiresNetworkConnectivity = false
+        request.requiresExternalPower = false
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    func runScheduledAnalysis(_ task: BGProcessingTask) async {
+        scheduledAnalysisActive = true
+        endExecutionTime()
+        defer { scheduledAnalysisActive = false }
+        var expired = false
+        task.expirationHandler = { [weak self] in
+            Task { @MainActor in
+                expired = true
+                self?.pause(stopRequest: false)
+            }
+        }
+        if !isScanning { await reload() }
+        guard !expired, let originals = requestedScan else {
+            task.setTaskCompleted(success: !expired)
+            return
+        }
+        scan(originals: originals)
+        await scanTask?.value
+        task.setTaskCompleted(success: !expired && requestedScan == nil)
+        scheduleBackgroundAnalysis()
     }
 
     func refreshResults() async {

@@ -34,8 +34,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PhotoCleaner-unsigned-${{ github.run_number }}
-          path: |
-            build/PhotoCleaner-unsigned.ipa
-            build/previews/
+          path: build/PhotoCleaner-unsigned.ipa
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload simulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoCleaner-previews-${{ github.run_number }}
+          path: build/previews/
+          if-no-files-found: ignore
           retention-days: 7

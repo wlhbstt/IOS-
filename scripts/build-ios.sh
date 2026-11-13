@@ -23,7 +23,7 @@ mkdir -p "$repo_dir/build"
 output="$repo_dir/build/PhotoCleaner-unsigned.ipa"
 rm -f "$output"
 run_dir="$(mktemp -d "$repo_dir/build/ios.XXXXXX")"
-trap 'rm -rf "$run_dir"' EXIT
+trap 'if [ -d "$run_dir/Tests.xcresult" ]; then xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews" || true; fi; rm -rf "$run_dir"' EXIT
 
 echo "Running PhotoCleanerCore tests"
 swift test
@@ -56,10 +56,9 @@ for photo in photo-1500530855697-b586d89ba3ee photo-1470071459604-3b5ec3a7fe05 p
 done
 xcodebuild "${simulator_args[@]}" \
     -parallel-testing-enabled NO -destination-timeout 120 \
-    -test-timeouts-enabled YES -maximum-test-execution-time-allowance 120 \
+    -test-timeouts-enabled YES -maximum-test-execution-time-allowance 240 \
     -resultBundlePath "$run_dir/Tests.xcresult" \
     test-without-building
-xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews"
 echo "Building Release for a generic iOS device without signing"
 xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
     -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \

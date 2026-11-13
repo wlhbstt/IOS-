@@ -86,7 +86,7 @@ actor LocalIndex {
     }
 
     private func storeFeature(_ data: Data, id: String) throws {
-        try data.write(to: featureURL(id), options: [.atomic, .completeFileProtection])
+        try data.write(to: featureURL(id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     private func shard(_ id: String) -> Int {
@@ -95,9 +95,12 @@ actor LocalIndex {
 
     private func prepare() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-            attributes: [.protectionKey: FileProtectionType.complete])
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
         try FileManager.default.createDirectory(at: directory.appendingPathComponent("features", isDirectory: true),
-            withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
+            withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+        for folder in [directory, directory.appendingPathComponent("features", isDirectory: true)] {
+            try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: folder.path)
+        }
         var url = directory
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
@@ -109,7 +112,7 @@ actor LocalIndex {
         let encoder = JSONEncoder()
         for bucket in buckets {
             let url = directory.appendingPathComponent("\(bucket).json")
-            try encoder.encode(pages[bucket]!).write(to: url, options: [.atomic, .completeFileProtection])
+            try encoder.encode(pages[bucket]!).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
     }
 }

@@ -15,5 +15,7 @@
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
     <key>UIUserInterfaceStyle</key><string>Automatic</string>
+    <key>UIBackgroundModes</key><array><string>processing</string></array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>com.localphototools.PhotoCleaner.analysis</string></array>
 </dict>
 </plist>
