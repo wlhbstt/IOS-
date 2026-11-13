@@ -158,11 +158,11 @@ final class PhotoAccess: @unchecked Sendable {
                 state.attach(continuation)
                 let options = PHImageRequestOptions()
                 options.isNetworkAccessAllowed = network
-                options.deliveryMode = thumbnail ? .fastFormat : .highQualityFormat
-                options.resizeMode = size == PHImageManagerMaximumSize ? .none : .exact
+                options.deliveryMode = .highQualityFormat
+                options.resizeMode = size == PHImageManagerMaximumSize ? .none : (thumbnail ? .fast : .exact)
                 let requestID = images.requestImage(for: asset, targetSize: size, contentMode: .aspectFit,
                                                      options: options) { image, info in
-                    if !thumbnail && (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue == true { return }
+                    if (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue == true { return }
                     if let error = info?[PHImageErrorKey] as? Error { state.finish(.failure(error)) }
                     else if let image { state.finish(.success(image)) }
                     else { state.finish(.failure(PhotoAccessError.unavailable)) }

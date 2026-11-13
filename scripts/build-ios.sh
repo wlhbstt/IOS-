@@ -23,7 +23,7 @@ mkdir -p "$repo_dir/build"
 output="$repo_dir/build/PhotoCleaner-unsigned.ipa"
 rm -f "$output"
 run_dir="$(mktemp -d "$repo_dir/build/ios.XXXXXX")"
-trap 'if [ -d "$run_dir/Tests.xcresult" ]; then mkdir -p "$repo_dir/build/previews"; xcrun simctl spawn "$simulator_id" log show --last 6m --style compact --predicate '\''process == "PhotoCleaner" OR subsystem BEGINSWITH "com.apple.photos"'\'' > "$repo_dir/build/previews/photokit.log" 2>&1 || true; xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews" || true; fi; rm -rf "$run_dir"' EXIT
+trap 'if [ -d "$run_dir/Tests.xcresult" ]; then mkdir -p "$repo_dir/build/previews"; xcrun simctl spawn "$simulator_id" log show --last 6m --style compact --predicate '\''subsystem BEGINSWITH "com.apple.photos"'\'' > "$repo_dir/build/previews/photokit.log" 2>&1 || true; xcrun xcresulttool export attachments --path "$run_dir/Tests.xcresult" --output-path "$repo_dir/build/previews" || true; fi; rm -rf "$run_dir"' EXIT
 
 echo "Running PhotoCleanerCore tests"
 swift test
