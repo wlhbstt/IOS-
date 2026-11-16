@@ -2,6 +2,35 @@ import XCTest
 
 final class ReviewUITests: XCTestCase {
     @MainActor
+    func testPreviousGestureRestoresStagedDeletion() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-review.gesture.down", "previous"]
+        app.launch()
+        XCTAssertTrue(app.buttons["review.start"].waitForExistence(timeout: 25))
+        app.buttons["review.start"].tap()
+        let image = app.images["review.image"].firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 30))
+        let progress = app.staticTexts["review.progress"]
+        let pending = app.buttons["review.pending"]
+        XCTAssertEqual(app.buttons["review.undo"].label, "上一张")
+        image.swipeLeft()
+        expect(progress, label: "1 /")
+        XCTAssertTrue(pending.label.contains("1"))
+        XCTAssertTrue(image.waitForExistence(timeout: 20))
+        image.swipeDown()
+        expect(progress, label: "0 /")
+        XCTAssertFalse(pending.isEnabled)
+        XCTAssertFalse(app.buttons["review.undo"].isEnabled)
+        capture("18-previous-gesture")
+        app.buttons["review.keep"].tap()
+        expect(progress, label: "1 /")
+        app.buttons["review.undo"].tap()
+        expect(progress, label: "0 /")
+        XCTAssertFalse(pending.isEnabled)
+    }
+
+    @MainActor
     func testSwipeUndoFavoritesReviewAndDeletion() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -61,6 +90,9 @@ final class ReviewUITests: XCTestCase {
         }
         expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: delete)
         waitForExpectations(timeout: 20)
+        let workBeforeDeletion = progress.value as? String
+        XCTAssertNotNil(workBeforeDeletion)
+        let deletedFilename = app.staticTexts["review.filename"].label
         delete.tap()
         pending.tap()
         let commit = app.buttons["pending.delete"]
@@ -82,10 +114,31 @@ final class ReviewUITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: commit)
         waitForExpectations(timeout: 30)
         XCTAssertFalse(pending.isEnabled)
+        XCTAssertEqual(progress.value as? String, workBeforeDeletion, "删除不得触发全库读取或相似匹配")
+        if app.buttons["review.undo"].isEnabled {
+            app.buttons["review.undo"].tap()
+            XCTAssertNotEqual(app.staticTexts["review.filename"].label, deletedFilename)
+            app.buttons["review.keep"].tap()
+        }
+        expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: delete)
+        waitForExpectations(timeout: 20)
+        delete.tap()
+        pending.tap()
+        XCTAssertTrue(commit.waitForExistence(timeout: 10))
+        commit.tap()
+        let second = systemDialog(app)
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        second.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Delete' OR label BEGINSWITH '删除'")).firstMatch.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: commit)
+        waitForExpectations(timeout: 30)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        XCTAssertTrue(progress.waitForExistence(timeout: 20))
+        XCTAssertEqual(progress.value as? String, workBeforeDeletion, "连续删除并回到前台不得全库重扫")
         capture("13-review-after-delete")
         app.navigationBars.buttons["完成"].tap()
         expectation(for: NSPredicate { _, _ in
-            Int(count.value as? String ?? count.label) == (originalCount ?? 0) - 1
+            Int(count.value as? String ?? count.label) == (originalCount ?? 0) - 2
         }, evaluatedWith: count)
         waitForExpectations(timeout: 20)
     }

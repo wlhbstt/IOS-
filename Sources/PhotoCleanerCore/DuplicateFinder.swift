@@ -10,6 +10,13 @@ public struct DuplicateGroup: Identifiable, Hashable, Sendable {
         self.memberIDs = memberIDs
         self.suggestedKeepID = suggestedKeepID
     }
+
+    public func removing(ids: Set<String>) -> DuplicateGroup? {
+        let remaining = memberIDs.filter { !ids.contains($0) }
+        guard remaining.count > 1 else { return nil }
+        return DuplicateGroup(id: id, memberIDs: remaining,
+            suggestedKeepID: remaining.contains(suggestedKeepID) ? suggestedKeepID : remaining[0])
+    }
 }
 
 public enum DuplicateFinder {

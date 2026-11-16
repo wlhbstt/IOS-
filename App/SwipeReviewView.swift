@@ -9,13 +9,13 @@ struct ReviewLaunch: Identifiable {
 
 extension ReviewDecision {
     var title: String {
-        switch self { case .delete: return "待删"; case .keep: return "保留"; case .favorite: return "待收藏"; case .skip: return "跳过" }
+        switch self { case .delete: return "待删"; case .keep: return "保留"; case .favorite: return "待收藏"; case .skip: return "跳过"; case .previous: return "上一张" }
     }
     var symbol: String {
-        switch self { case .delete: return "trash"; case .keep: return "checkmark"; case .favorite: return "heart"; case .skip: return "arrow.right.to.line" }
+        switch self { case .delete: return "trash"; case .keep: return "checkmark"; case .favorite: return "heart"; case .skip: return "arrow.right.to.line"; case .previous: return "arrow.uturn.backward" }
     }
     var color: Color {
-        switch self { case .delete: return .red; case .keep: return LibraryStyle.accent; case .favorite: return .pink; case .skip: return .secondary }
+        switch self { case .delete: return .red; case .keep: return LibraryStyle.accent; case .favorite: return .pink; case .skip, .previous: return .secondary }
     }
 }
 
@@ -53,6 +53,9 @@ struct SwipeReviewView: View {
             HStack {
                 Text("\(session.completedCount) / \(session.ids.count)").monospacedDigit()
                     .accessibilityIdentifier("review.progress")
+                    #if DEBUG
+                    .accessibilityValue(library.debugWorkCounts)
+                    #endif
                 Spacer()
                 if let current {
                     Text(current.createdAt?.formatted(date: .abbreviated, time: .omitted) ?? "日期未知")
@@ -114,6 +117,11 @@ struct SwipeReviewView: View {
         .sheet(isPresented: $pending) { NavigationStack { DeletionReviewView() } }
         .sheet(isPresented: $settings) { NavigationStack { ReviewGestureSettingsView() } }
         .sheet(item: $detail) { record in NavigationStack { PhotoDetailView(record: record) } }
+        .onChange(of: library.snapshotRevision) { _, _ in
+            let previous = session.currentID
+            session.retain(ids: Set(library.snapshot.map(\.id)))
+            if session.currentID != previous { loadedID = nil }
+        }
         .alert(item: $library.notice) { notice in
             Alert(title: Text("相册整理"), message: Text(notice.message), dismissButton: .default(Text("好")))
         }
@@ -146,8 +154,8 @@ struct SwipeReviewView: View {
 
     private var actions: some View {
         HStack(alignment: .center, spacing: 8) {
-            actionButton("撤销", symbol: "arrow.uturn.backward", color: .secondary, identifier: "review.undo") {
-                if let step = session.undo() { library.restoreReview(step); loadedID = nil }
+            actionButton("上一张", symbol: "arrow.uturn.backward", color: .secondary, identifier: "review.undo") {
+                decide(.previous)
             }.disabled(!session.canUndo)
             ForEach([ReviewDecision.delete, .favorite, .keep, .skip], id: \.rawValue) { decision in
                 actionButton(decision.title, symbol: decision.symbol, color: decision.color, identifier: "review.\(decision.rawValue)") {
@@ -168,7 +176,15 @@ struct SwipeReviewView: View {
     }
 
     private func decide(_ decision: ReviewDecision) {
-        guard let record = current, !busy else { return }
+        guard !busy else { return }
+        if decision == .previous {
+            if let step = session.decide(.previous, wasSelected: false) {
+                library.restoreReview(step)
+                loadedID = nil
+            }
+            return
+        }
+        guard let record = current else { return }
         if decision == .delete && loadedID != record.id { return }
         let selected = library.selectedIDs.contains(record.id)
         let favorite = library.pendingFavoriteIDs.contains(record.id)

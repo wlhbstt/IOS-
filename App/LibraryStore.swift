@@ -58,7 +58,14 @@ final class LibraryStore: ObservableObject {
     private var indexLoaded = false
     private var scanTask: Task<Void, Never>?
     private var scanEpoch = UUID()
-    private var changeTask: Task<Void, Never>?
+    private var assetResults: PHFetchResult<PHAsset>?
+    private var pendingChanges: [PHChange] = []
+    private var isApplyingChanges = false
+    #if DEBUG
+    private var fullReloadCount = 0
+    private var groupMatchCount = 0
+    var debugWorkCounts: String { "\(fullReloadCount):\(groupMatchCount)" }
+    #endif
     private var publicationGeneration = 0
     private var matchingTask: Task<Void, Never>?
     private var executionAllowance = UIBackgroundTaskIdentifier.invalid
@@ -77,16 +84,11 @@ final class LibraryStore: ObservableObject {
     init() {
         allowCloudDownload = UserDefaults.standard.bool(forKey: "allowCloudDownload")
         protectedAlbumIDs = Set(UserDefaults.standard.stringArray(forKey: "protectedAlbumIDs") ?? [])
-        observer.changed = { [weak self] in
+        observer.changed = { [weak self] change in
             Task { @MainActor in
-                guard let self, !self.isDeleting else { return }
-                self.pause(stopRequest: false)
-                self.changeTask?.cancel()
-                self.changeTask = Task {
-                    try? await Task.sleep(for: .milliseconds(400))
-                    guard !Task.isCancelled else { return }
-                    await self.reload()
-                }
+                guard let self else { return }
+                self.pendingChanges.append(change)
+                await self.applyPendingChanges()
             }
         }
     }
@@ -105,11 +107,15 @@ final class LibraryStore: ObservableObject {
         await reload()
     }
 
-    func reload() async {
-        guard !isReloading, !isDeleting, !isSavingFavorites else { return }
+    func reload(handlingChange: Bool = false) async {
+        guard !isReloading, !isDeleting, !isSavingFavorites, !isApplyingChanges || handlingChange else { return }
+        #if DEBUG
+        fullReloadCount += 1
+        #endif
         isReloading = true
         defer {
             isReloading = false
+            Task { await self.applyPendingChanges() }
             if UIApplication.shared.applicationState == .active, let originals = requestedScan, !isScanning {
                 scan(originals: originals)
             }
@@ -126,6 +132,8 @@ final class LibraryStore: ObservableObject {
             }
             records.removeAll()
             assetMap.removeAll()
+            assetResults = nil
+            pendingChanges.removeAll()
             selectedIDs.removeAll()
             pendingFavoriteIDs.removeAll()
             protectedIDs.removeAll()
@@ -146,12 +154,15 @@ final class LibraryStore: ObservableObject {
             }
             let protectedAlbums = protectedAlbumIDs
             let catalogue = await Task.detached(priority: .userInitiated) { [photos] in
-                (assets: photos.assets().map { ($0, photos.metadata($0)) },
+                let fetch = photos.assets()
+                var assets: [(PHAsset, MediaRecord)] = []
+                fetch.enumerateObjects { asset, _, _ in assets.append((asset, photos.metadata(asset))) }
+                return (fetch: fetch, assets: assets,
                  albums: photos.albums(), protection: photos.protectedIDs(albumIDs: protectedAlbums))
             }.value
             guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == authorization, protectedAlbums == protectedAlbumIDs else {
                 isReloading = false
-                await reload()
+                await reload(handlingChange: handlingChange)
                 return
             }
             var refreshed: [String: MediaRecord] = [:]
@@ -168,6 +179,7 @@ final class LibraryStore: ObservableObject {
                 }
             }
             records = refreshed
+            assetResults = catalogue.fetch
             assetMap = Dictionary(uniqueKeysWithValues: catalogue.assets.map { ($0.0.localIdentifier, $0.0) })
             albums = catalogue.albums
             protectedIDs = catalogue.protection
@@ -182,8 +194,105 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    private func applyPendingChanges() async {
+        guard !isApplyingChanges, !isReloading, !isDeleting, !isSavingFavorites, !pendingChanges.isEmpty else { return }
+        isApplyingChanges = true
+        defer {
+            isApplyingChanges = false
+            isReloading = false
+            if UIApplication.shared.applicationState == .active, let originals = requestedScan, !isScanning {
+                scan(originals: originals)
+            }
+        }
+        while !pendingChanges.isEmpty {
+            let changes = pendingChanges
+            pendingChanges.removeAll(keepingCapacity: true)
+            var refreshProtection = false
+            for change in changes {
+                if PHPhotoLibrary.authorizationStatus(for: .readWrite) != authorization || assetResults == nil {
+                    isReloading = false
+                    await reload(handlingChange: true)
+                }
+                guard hasAccess, let fetched = assetResults else { pendingChanges.removeAll(); return }
+                guard let details = change.changeDetails(for: fetched) else {
+                    refreshProtection = true
+                    continue
+                }
+                assetResults = details.fetchResultAfterChanges
+                guard details.hasIncrementalChanges else {
+                    isReloading = false
+                    await reload(handlingChange: true)
+                    continue
+                }
+                let removed = Set(details.removedObjects.map(\.localIdentifier))
+                let updated = details.insertedObjects + details.changedObjects
+                // Our completed deletion already updated records; its notification only advances the fetch baseline.
+                guard !updated.isEmpty || removed.contains(where: { records[$0] != nil }) else { continue }
+                isReloading = true
+                let running = scanTask
+                pause(stopRequest: false)
+                await running?.value
+                let metadata = await Task.detached(priority: .userInitiated) { [photos] in
+                    updated.map { photos.metadata($0) }
+                }.value
+                guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == authorization else {
+                    isReloading = false
+                    await reload(handlingChange: true)
+                    continue
+                }
+                let reviewed = Array(records.values)
+                let groups = exactGroups + similarGroups
+                var invalidated = removed
+                for item in metadata {
+                    let previous = records[item.id]
+                    let merged = previous?.updatingMetadata(from: item) ?? item
+                    if previous?.perceptualHash != merged.perceptualHash || previous?.digest != merged.digest {
+                        invalidated.insert(item.id)
+                    }
+                    records[item.id] = merged
+                }
+                for asset in updated { assetMap[asset.localIdentifier] = asset }
+                for id in removed { records.removeValue(forKey: id); assetMap.removeValue(forKey: id) }
+                protectedIDs.subtract(removed)
+                selectedIDs.subtract(removed)
+                selectedIDs = selectedIDs.filter { records[$0]?.isFavorite == false }
+                pendingFavoriteIDs = pendingFavoriteIDs.filter { records[$0]?.isFavorite == false }
+                if !selectedIDs.isEmpty {
+                    do {
+                        try DeletionPolicy.validateUnchanged(selectedIDs: selectedIDs, reviewedRecords: reviewed,
+                            currentRecords: Array(records.values), groups: groups)
+                    } catch {
+                        selectedIDs.removeAll()
+                        notice = LibraryNotice(message: "照片或保留项已变化，待删选择已清空，请重新检查。")
+                    }
+                }
+                exactGroups = exactGroups.compactMap { $0.removing(ids: invalidated) }
+                similarGroups = similarGroups.compactMap { $0.removing(ids: invalidated) }
+                await publishSnapshot(rebuildGroups: false)
+                let saved = metadata.compactMap { records[$0.id] }
+                Task { [index] in
+                    do { try await index.remove(ids: removed); try await index.upsert(saved) }
+                    catch { notice = LibraryNotice(message: "相册已更新，但本机索引保存失败，请刷新相册。") }
+                }
+                refreshProtection = refreshProtection || !updated.isEmpty
+            }
+            if refreshProtection {
+                isReloading = true
+                let protectedAlbums = protectedAlbumIDs
+                let current = await Task.detached(priority: .userInitiated) { [photos] in
+                    (photos.albums(), photos.protectedIDs(albumIDs: protectedAlbums))
+                }.value
+                albums = current.0
+                if protectedAlbums == protectedAlbumIDs {
+                    protectedIDs = current.1
+                    selectedIDs.subtract(protectedIDs)
+                }
+            }
+        }
+    }
+
     func scan(originals: Bool = false) {
-        guard hasAccess, !isReloading, scanTask == nil, !isDeleting, !isSavingFavorites else { return }
+        guard hasAccess, !isReloading, !isApplyingChanges, scanTask == nil, !isDeleting, !isSavingFavorites else { return }
         let epoch = UUID()
         scanEpoch = epoch
         let candidates = records.values.filter {
@@ -301,7 +410,9 @@ final class LibraryStore: ObservableObject {
     }
 
     func becameActive() async {
-        if !isScanning { await reload() }
+        if !indexLoaded || assetResults == nil || PHPhotoLibrary.authorizationStatus(for: .readWrite) != authorization {
+            await reload()
+        } else { await applyPendingChanges() }
         if let originals = requestedScan, !isScanning { scan(originals: originals) }
         if isScanning { retainExecutionTime() }
     }
@@ -400,6 +511,9 @@ final class LibraryStore: ObservableObject {
         categoryPreviewIDs = previews
         snapshotRevision += 1
         guard rebuildGroups else { return }
+        #if DEBUG
+        groupMatchCount += 1
+        #endif
         let worker = Task.detached(priority: .utility) { [similarFinder, index] in
             let exact = DuplicateFinder.exactGroups(current)
             let similar = try await similarFinder.groups(in: current, index: index)
@@ -444,6 +558,7 @@ final class LibraryStore: ObservableObject {
             selectedIDs.remove(id)
             if !record.isFavorite { pendingFavoriteIDs.insert(id) }
         case .skip: break
+        case .previous: return false
         }
         return true
     }
@@ -459,7 +574,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func confirmFavorites() async {
-        guard !isSavingFavorites, !isDeleting, !isReloading, !pendingFavoriteIDs.isEmpty else { return }
+        guard !isSavingFavorites, !isDeleting, !isReloading, !isApplyingChanges, !pendingFavoriteIDs.isEmpty else { return }
         isSavingFavorites = true
         pause()
         let ids = pendingFavoriteIDs
@@ -475,7 +590,7 @@ final class LibraryStore: ObservableObject {
             await publishSnapshot(rebuildGroups: false)
         } catch { notice = LibraryNotice(message: "收藏未完成：\(error.localizedDescription)") }
         isSavingFavorites = false
-        await reload()
+        await applyPendingChanges()
     }
 
     func selectRecommended(_ group: DuplicateGroup) {
@@ -555,14 +670,17 @@ final class LibraryStore: ObservableObject {
     }
 
     func delete(ids: Set<String>, expectedModification: (id: String, date: Date?)? = nil, requiredCopyID: String? = nil) async {
-        guard !isDeleting, !isSavingFavorites, !isReloading, !ids.isEmpty else { return }
+        guard !isDeleting, !isSavingFavorites, !isReloading, !isApplyingChanges, !ids.isEmpty else { return }
         let reviewedGroups = (exactGroups + similarGroups).filter { $0.memberIDs.contains(where: ids.contains) }
         let relevantIDs = ids.union(reviewedGroups.flatMap(\.memberIDs)).union(requiredCopyID.map { [$0] } ?? [])
         let reviewedRecords = relevantIDs.compactMap { records[$0] }
         deletionStatus = "正在核对待删项目"
         isDeleting = true
-        defer { isDeleting = false; deletionStatus = "" }
-        changeTask?.cancel()
+        defer {
+            isDeleting = false
+            deletionStatus = ""
+            Task { await self.applyPendingChanges() }
+        }
         pause()
         scanEpoch = UUID()
         scanTask = nil
@@ -589,9 +707,9 @@ final class LibraryStore: ObservableObject {
             selectedIDs.subtract(ids)
             pendingFavoriteIDs.subtract(ids)
             for id in ids { records.removeValue(forKey: id); assetMap.removeValue(forKey: id) }
-            exactGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
-            similarGroups.removeAll { $0.memberIDs.contains(where: ids.contains) }
-            await publishSnapshot()
+            exactGroups = exactGroups.compactMap { $0.removing(ids: ids) }
+            similarGroups = similarGroups.compactMap { $0.removing(ids: ids) }
+            await publishSnapshot(rebuildGroups: false)
             // Cache maintenance must not keep the completed Photos transaction blocking the UI.
             Task { [index] in
                 do { try await index.remove(ids: ids) }

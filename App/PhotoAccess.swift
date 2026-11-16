@@ -94,14 +94,13 @@ final class PhotoAccess: @unchecked Sendable {
         return options
     }
 
-    func assets() -> [PHAsset] {
+    func assets() -> PHFetchResult<PHAsset> {
         let options = Self.fetchOptions()
         options.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d",
                                         PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        var result: [PHAsset] = []
-        PHAsset.fetchAssets(with: options).enumerateObjects { asset, _, _ in result.append(asset) }
-        return result
+        options.wantsIncrementalChangeDetails = true
+        return PHAsset.fetchAssets(with: options)
     }
 
     func asset(_ id: String) -> PHAsset? {
@@ -252,6 +251,6 @@ final class PhotoAccess: @unchecked Sendable {
 }
 
 final class LibraryChangeObserver: NSObject, PHPhotoLibraryChangeObserver {
-    var changed: (() -> Void)?
-    func photoLibraryDidChange(_ changeInstance: PHChange) { changed?() }
+    var changed: ((PHChange) -> Void)?
+    func photoLibraryDidChange(_ changeInstance: PHChange) { changed?(changeInstance) }
 }

@@ -3,6 +3,25 @@ import XCTest
 @testable import PhotoCleanerCore
 
 final class ReviewSessionTests: XCTestCase {
+    func testPreviousGestureReturnsWithoutAddingAnotherDecision() {
+        let previous = ReviewDecision(rawValue: "previous")
+        XCTAssertNotNil(previous, "手势设置必须支持上一张")
+        guard let previous else { return }
+        var session = ReviewSession(ids: ["a", "b"])
+        session.decide(previous, wasSelected: false)
+        XCTAssertEqual(session.currentID, "a")
+        session.decide(.delete, wasSelected: false)
+        session.decide(previous, wasSelected: false)
+        XCTAssertEqual(session.currentID, "a")
+        XCTAssertEqual(session.completedCount, 0)
+        XCTAssertNil(session.undo())
+        session.decide(.keep, wasSelected: false)
+        session.decide(.skip, wasSelected: false)
+        session.decide(previous, wasSelected: false)
+        XCTAssertEqual(session.currentID, "b")
+        XCTAssertEqual(session.completedCount, 1)
+    }
+
     func testDecisionsAdvanceAndUndoRestoresPreviousSelectionState() {
         var session = ReviewSession(ids: ["a", "b", "c"])
         XCTAssertEqual(session.currentID, "a")
@@ -18,6 +37,22 @@ final class ReviewSessionTests: XCTestCase {
         XCTAssertEqual(session.undo()?.wasSelected, false)
         XCTAssertEqual(session.currentID, "a")
         XCTAssertNil(session.undo())
+    }
+
+    func testRemovingConfirmedDeletionsKeepsCurrentPhotoAndValidHistory() {
+        var session = ReviewSession(ids: ["deleted", "kept", "current", "future"])
+        session.decide(.delete, wasSelected: false)
+        session.decide(.keep, wasSelected: false)
+        session.retain(ids: ["kept", "current"])
+        XCTAssertEqual(session.ids, ["kept", "current"])
+        XCTAssertEqual(session.currentID, "current")
+        XCTAssertEqual(session.completedCount, 1)
+        XCTAssertEqual(session.undo()?.id, "kept")
+        XCTAssertEqual(session.currentID, "kept")
+        XCTAssertNil(session.undo())
+        session.retain(ids: [])
+        XCTAssertNil(session.currentID)
+        XCTAssertFalse(session.canUndo)
     }
 
     func testSkipAndCompletionDoNotOverflowAndCanUndoLastItem() {

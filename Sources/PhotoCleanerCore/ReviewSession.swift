@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ReviewDecision: String, CaseIterable, Sendable { case delete, keep, favorite, skip }
+public enum ReviewDecision: String, CaseIterable, Sendable { case delete, keep, favorite, skip, previous }
 
 public struct ReviewStep: Sendable {
     public let id: String
@@ -10,7 +10,7 @@ public struct ReviewStep: Sendable {
 }
 
 public struct ReviewSession: Sendable {
-    public let ids: [String]
+    public private(set) var ids: [String]
     private var history: [ReviewStep] = []
 
     public init(ids: [String]) { self.ids = ids }
@@ -18,9 +18,17 @@ public struct ReviewSession: Sendable {
     public var currentID: String? { history.count < ids.count ? ids[history.count] : nil }
     public var canUndo: Bool { !history.isEmpty }
 
-    public mutating func decide(_ decision: ReviewDecision, wasSelected: Bool, wasFavoritePending: Bool = false) {
-        guard let id = currentID else { return }
+    @discardableResult
+    public mutating func decide(_ decision: ReviewDecision, wasSelected: Bool, wasFavoritePending: Bool = false) -> ReviewStep? {
+        if decision == .previous { return undo() }
+        guard let id = currentID else { return nil }
         history.append(ReviewStep(id: id, decision: decision, wasSelected: wasSelected, wasFavoritePending: wasFavoritePending))
+        return nil
+    }
+
+    public mutating func retain(ids availableIDs: Set<String>) {
+        ids.removeAll { !availableIDs.contains($0) }
+        history.removeAll { !availableIDs.contains($0.id) }
     }
 
     @discardableResult
