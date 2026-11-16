@@ -83,6 +83,10 @@ test -x "$app/$executable"
 xcrun lipo "$app/$executable" -verify_arch arm64
 platform="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")"
 test "$platform" = iPhoneOS
+icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app/Info.plist")"
+test "$icon_name" = AppIcon
+test -s "$app/Assets.car"
+echo "Primary AppIcon and compiled asset catalog verified"
 
 mkdir "$run_dir/Payload"
 ditto "$app" "$run_dir/Payload/PhotoCleaner.app"

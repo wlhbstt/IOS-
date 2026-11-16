@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const required = [
   'Package.swift', 'project.yml', 'App/Info.plist', 'App/PhotoCleanerApp.swift',
+  'App/Assets.xcassets/Contents.json', 'App/Assets.xcassets/AppIcon.appiconset/Contents.json',
+  'App/Assets.xcassets/AppIcon.appiconset/AppIcon.png',
   '.github/workflows/ios.yml', 'scripts/build-ios.sh',
   'scripts/install-swift-test-toolchain.sh', 'README.md',
   'docs/INSTALL-WINDOWS.md', 'docs/DEVICE-CHECKLIST.md',
