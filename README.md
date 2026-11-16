@@ -1,9 +1,10 @@
 # IOS- / 相册整理 PhotoCleaner
 
-面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。0.3.2 已通过云端编译、33 项核心测试、8 项原生测试和 4 项界面流程；目标手机的大图库耗时待验证，见 [验证说明](docs/VERIFICATION.md)。
+面向 iPhone 的本地相册整理工具，最低 iOS 18.0，目标验收设备为 iPhone 15 Pro / iOS 18.5。0.3.3 已通过云端编译、33 项核心测试、8 项原生测试和 4 项界面流程；目标手机的大图库耗时待验证，见 [验证说明](docs/VERIFICATION.md)。
 
 ## 已实现的范围
 
+- 0.3.3：加入用户确认的 A 方案应用图标，绿色照片叠层与勾选标记。
 - 0.3.2：图库通知增量更新，正常删除后修剪现有分组，返回前台不默认重读全库；“上一张”按钮及可配置手势可撤回上一项暂存动作。
 - 0.3.1：待删确认与全屏整理页显示处理状态；系统删除成功后异步按 ID 清理缓存，相簿保护读取移到后台，避免删除后继续等待全库索引维护。
 - 0.3.0：四向滑动整理、自定义手势、撤销、待删除/待收藏复核；三列网格与横向双行浏览。
@@ -21,7 +22,7 @@
 
 按 [Windows 安装说明](docs/INSTALL-WINDOWS.md) 在 GitHub macOS runner 编译，再在自己的 Windows 电脑用 Sideloadly 签名安装。GitHub 不需要 Apple 账号、密码或签名证书；未签名 IPA 不能直接安装到 iPhone。
 
-免费 Apple 账号需要周期续签。源码位于 `codex/initial-app` 分支；[0.3.2 已验证构建与安装包](https://github.com/wlhbstt/IOS-/actions/runs/43787020486)见该任务的 `PhotoCleaner-unsigned-24` Artifact。构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
+免费 Apple 账号需要周期续签。源码位于 `codex/initial-app` 分支；[0.3.3 已验证构建与安装包](https://github.com/wlhbstt/IOS-/actions/runs/43790053998)见该任务的 `PhotoCleaner-unsigned-25` Artifact。构建成功和真机行为须分别验收，见 [真机检查表](docs/DEVICE-CHECKLIST.md)。
 
 ## 验证与构建
 

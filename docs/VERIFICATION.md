@@ -2,6 +2,14 @@
 
 日期：2026-11-16。
 
+## 0.3.3 应用图标
+
+- 用户确认 A 方案：绿色照片叠层与勾选标记。已将预览原始方图转为 1024×1024、8-bit RGB PNG，无透明通道，加入 `App/Assets.xcassets/AppIcon.appiconset`，由 `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` 指定为主图标。
+- 源码 `b25dce8f1bf415211d5f38a62bfd899c8cf5c80e`，0.3.3 / build 6，保留原应用名称和 Bundle ID。本地 PNG 头、资源 JSON、项目必需输入、构建脚本语法与差异检查通过。
+- [运行 43790053998](https://github.com/wlhbstt/IOS-/actions/runs/43790053998) 全部成功：Xcode 16.4 / SDK 18.5，33 项核心、8 项原生、4 项界面流程通过；Release 真机编译通过，主 AppIcon 声明和编译资源检查通过。
+- 本地安装包 `build/PhotoCleaner-0.3.3.ipa`：0.3.3 / build 6、885897 字节、`com.localphototools.PhotoCleaner`、iPhoneOS、最低 iOS 18.0、arm64 Mach-O、ZIP 全条目校验通过。包内 `CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName` 为 `AppIcon`，包含 `Assets.car` 和编译后图标 PNG。SHA-256：`c78d7fc5b2cc519546b4d14d5119658f151c1d63b4c18232ee2b1f749e97f984`。产物 `PhotoCleaner-unsigned-25` 未签名，需本地签名覆盖安装。
+- 图标源文件 SHA-256：`9fb60abc6dfe13811e0c7396b3d3fe4c22be0a5327e2cd6c577f54234b92f81b`。覆盖安装后的真机桌面和系统外观显示待验收。
+
 ## 0.3.2 增量删除与上一张
 
 - 用户反馈：每次确认待删后重新分析相册，耗时较长；手势只能跳过，缺少上一张。没有真机阶段耗时或性能日志，不能将源码成本认定为全部等待时间的唯一原因。
