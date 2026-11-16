@@ -268,6 +268,7 @@ struct RecordBrowser: View {
         VStack(spacing: 0) {
             HStack {
                 Text("\(results.count.formatted()) 项").font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .accessibilityIdentifier("browser.count").accessibilityValue("\(results.count)")
                 if filtering { ProgressView().controlSize(.small) }
                 Spacer()
                 Button { reviewLaunch = ReviewLaunch(title: title, ids: results.map(\.id)) } label: {

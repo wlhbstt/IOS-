@@ -72,8 +72,15 @@ final class LibraryUITests: XCTestCase {
         XCTAssertEqual(analysisResult, .completed)
         XCTAssertTrue(app.buttons["library.analyze"].exists)
         app.buttons["library.all"].tap()
-        let photoCount = app.buttons.matching(NSPredicate(format: "label == '选择待删'")).count
-        app.buttons.matching(NSPredicate(format: "label == '选择待删' AND NOT identifier CONTAINS[c] 'compression-fixture'")).firstMatch.tap()
+        let count = app.staticTexts["browser.count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 10))
+        let selected = app.buttons.matching(NSPredicate(format: "label == '选择待删' AND NOT identifier CONTAINS[c] 'compression-fixture'")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 10))
+        let photoCount = Int(count.value as? String ?? "")
+        XCTAssertNotNil(photoCount)
+        XCTAssertGreaterThan(photoCount ?? 0, 0)
+        let deletedIdentifier = selected.identifier
+        selected.tap()
         app.buttons["library.delete"].tap()
         let appDialog = app.alerts.firstMatch
         let dialog = appDialog.waitForExistence(timeout: 5) ? appDialog
@@ -86,9 +93,10 @@ final class LibraryUITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.buttons["library.delete"])
         waitForExpectations(timeout: 20)
         expectation(for: NSPredicate { _, _ in
-            app.buttons.matching(NSPredicate(format: "label == '选择待删'")).count == photoCount - 1
+            Int(count.value as? String ?? "") == (photoCount ?? 0) - 1
         }, evaluatedWith: app)
         waitForExpectations(timeout: 15)
+        XCTAssertFalse(app.buttons[deletedIdentifier].exists)
         capture("07-after-delete")
     }
 
