@@ -149,7 +149,6 @@ final class ReviewUITests: XCTestCase {
     func testCollectionsDoubleRowsAndCompressionCopy() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-library.twoRows", "NO"]
         app.launch()
         waitForCatalogue(app)
         XCTAssertTrue(app.tabBars.buttons["整理"].waitForExistence(timeout: 20))
@@ -158,9 +157,12 @@ final class ReviewUITests: XCTestCase {
         XCTAssertTrue(count.waitForExistence(timeout: 15))
         let before = Int(count.value as? String ?? count.label)
         app.buttons["organize.scope.photos"].tap()
-        XCTAssertTrue(app.buttons["browser.layout"].waitForExistence(timeout: 10))
-        app.buttons["browser.layout"].tap()
+        let layout = app.buttons["browser.layout"]
+        XCTAssertTrue(layout.waitForExistence(timeout: 10))
+        if layout.label == "双行浏览" { layout.tap() }
+        XCTAssertEqual(layout.label, "网格浏览")
         XCTAssertTrue(app.scrollViews["browser.twoRows"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.images["照片预览"].firstMatch.waitForExistence(timeout: 15))
         capture("14-two-row-browser")
         app.buttons["browser.layout"].tap()
         app.navigationBars.buttons["整理"].tap()
