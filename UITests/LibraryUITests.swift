@@ -2,6 +2,47 @@ import XCTest
 
 final class LibraryUITests: XCTestCase {
     @MainActor
+    func testProgressiveReadAndCachedRelaunch() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitest-stream-catalogue"]
+        app.launch()
+        let reading = app.staticTexts["library.read.progress"]
+        XCTAssertTrue(reading.waitForExistence(timeout: 15))
+        let count = app.staticTexts["organize.count"]
+        XCTAssertEqual(count.value as? String, "2")
+        XCTAssertTrue(app.buttons["review.start"].isEnabled)
+        app.buttons["review.start"].tap()
+        XCTAssertTrue(app.images["review.image"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["review.keep"].tap()
+        XCTAssertTrue(app.staticTexts["review.progress"].label.hasPrefix("1 /"))
+        capture("19-progressive-read")
+        app.buttons["完成"].tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: reading)
+        waitForExpectations(timeout: 40)
+        let total = count.value as? String
+        XCTAssertGreaterThan(Int(total ?? "") ?? 0, 2)
+        app.tabBars.buttons["清理"].tap()
+        let analyzed = app.otherElements["library.metric.已分析"]
+        let pending = app.otherElements["library.metric.待分析"]
+        let expected = (Int(analyzed.value as? String ?? "") ?? 0) + (Int(pending.value as? String ?? "") ?? 0)
+        app.buttons["library.analyze"].tap()
+        expectation(for: NSPredicate { _, _ in analyzed.value as? String == String(expected) }, evaluatedWith: analyzed)
+        waitForExpectations(timeout: 90)
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        let refresh = app.buttons["library.refresh"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 15))
+        expectation(for: NSPredicate { _, _ in count.value as? String == total && refresh.isEnabled }, evaluatedWith: count)
+        waitForExpectations(timeout: 25)
+        XCTAssertEqual(refresh.value as? String, "0", "Unchanged cached assets should not reopen their resources")
+        app.tabBars.buttons["清理"].tap()
+        XCTAssertEqual(analyzed.value as? String, String(expected), "Completed analysis must survive relaunch")
+        capture("20-cached-relaunch")
+    }
+
+    @MainActor
     func testLibraryScreensAndSelection() {
         continueAfterFailure = false
         let app = XCUIApplication()
