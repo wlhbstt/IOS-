@@ -105,6 +105,20 @@ final class PhotoCleanerCoreTests: XCTestCase {
         XCTAssertEqual(edited.customTags, ["工作"])
     }
 
+    func testChangedMediaSubtypeOrDurationInvalidatesCachedAnalysis() {
+        let analyzed = MediaRecord(id: "version", filename: "photo.jpg", duration: 1,
+            digest: "old", customTags: ["保留"], text: "旧识别结果", analysisState: .complete)
+        let screenshot = MediaRecord(id: "version", filename: "photo.jpg", isScreenshot: true, duration: 1)
+        let duration = MediaRecord(id: "version", filename: "photo.jpg", duration: 2)
+        for changed in [screenshot, duration] {
+            let refreshed = analyzed.updatingMetadata(from: changed)
+            XCTAssertEqual(refreshed.analysisState, .pending)
+            XCTAssertNil(refreshed.digest)
+            XCTAssertTrue(refreshed.text.isEmpty)
+            XCTAssertEqual(refreshed.customTags, ["保留"])
+        }
+    }
+
     func testWhitespaceQueryStillAppliesTagsAndCalendarDateFilters() {
         let calendar = Calendar.current
         let day = calendar.date(from: DateComponents(year: 2024, month: 6, day: 12))!

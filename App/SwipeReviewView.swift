@@ -41,7 +41,7 @@ struct SwipeReviewView: View {
     }
 
     private var current: MediaRecord? { session.currentID.flatMap(library.record) }
-    private var busy: Bool { library.isDeleting || library.isSavingFavorites || library.isReloading }
+    private var busy: Bool { library.isDeleting || library.isSavingFavorites || !library.canReview }
     private var pendingCount: Int { library.selectedIDs.count + library.pendingFavoriteIDs.count }
     private var dragDecision: ReviewDecision {
         let raw = abs(offset.width) > abs(offset.height) ? (offset.width < 0 ? left : right) : (offset.height < 0 ? up : down)

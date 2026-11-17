@@ -81,7 +81,7 @@ struct OrganizeView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(Color(uiColor: .systemBackground))
                     .background(LibraryStyle.accent, in: RoundedRectangle(cornerRadius: 8))
-                    .disabled(summary.ids.isEmpty || library.isReloading)
+                    .disabled(summary.ids.isEmpty || !library.canReview)
                     .accessibilityIdentifier("review.start")
                 }
                 VStack(alignment: .leading, spacing: 12) {

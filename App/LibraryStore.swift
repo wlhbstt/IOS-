@@ -21,6 +21,9 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var protectedIDs = Set<String>()
     @Published private(set) var isScanning = false
     @Published private(set) var isReloading = false
+    @Published private(set) var isReadingCatalogue = false
+    @Published private(set) var catalogueReadCount = 0
+    @Published private(set) var catalogueTotal = 0
     @Published private(set) var isDeleting = false
     @Published private(set) var deletionStatus = ""
     @Published private(set) var isSavingFavorites = false
@@ -64,6 +67,7 @@ final class LibraryStore: ObservableObject {
     #if DEBUG
     private var fullReloadCount = 0
     private var groupMatchCount = 0
+    private(set) var resourceReadCount = 0
     var debugWorkCounts: String { "\(fullReloadCount):\(groupMatchCount)" }
     #endif
     private var publicationGeneration = 0
@@ -98,6 +102,7 @@ final class LibraryStore: ObservableObject {
     }
 
     var hasAccess: Bool { authorization == .authorized || authorization == .limited }
+    var canReview: Bool { !isReloading || (isReadingCatalogue && catalogueReadCount > 0) }
     var selectedOriginalBytes: Int64? {
         ResourceByteCounts.total(selectedIDs.map { records[$0]?.originalBytes })
     }
@@ -113,7 +118,10 @@ final class LibraryStore: ObservableObject {
         fullReloadCount += 1
         #endif
         isReloading = true
+        catalogueReadCount = 0
+        catalogueTotal = 0
         defer {
+            isReadingCatalogue = false
             isReloading = false
             Task { await self.applyPendingChanges() }
             if UIApplication.shared.applicationState == .active, let originals = requestedScan, !isScanning {
@@ -153,36 +161,53 @@ final class LibraryStore: ObservableObject {
                 indexLoaded = true
             }
             let protectedAlbums = protectedAlbumIDs
-            let catalogue = await Task.detached(priority: .userInitiated) { [photos] in
-                let fetch = photos.assets()
-                var assets: [(PHAsset, MediaRecord)] = []
-                fetch.enumerateObjects { asset, _, _ in assets.append((asset, photos.metadata(asset))) }
-                return (fetch: fetch, assets: assets,
-                 albums: photos.albums(), protection: photos.protectedIDs(albumIDs: protectedAlbums))
+            let cached = records
+            let reviewedSelection = selectedIDs
+            let protection = await Task.detached(priority: .userInitiated) { [photos] in
+                (albums: photos.albums(), ids: photos.protectedIDs(albumIDs: protectedAlbums))
             }.value
+            albums = protection.albums
+            protectedIDs = protection.ids
+            records = [:]
+            assetMap = [:]
+            #if DEBUG
+            resourceReadCount = 0
+            #endif
+            isReadingCatalogue = true
+            let fetched = try await photos.readCatalogue(cached: cached) { [weak self] batch, total, reads in
+                guard let self, PHPhotoLibrary.authorizationStatus(for: .readWrite) == self.authorization,
+                      protectedAlbums == self.protectedAlbumIDs else { return false }
+                var changed: [MediaRecord] = []
+                for (asset, record) in batch {
+                    self.records[record.id] = record
+                    self.assetMap[record.id] = asset
+                    if cached[record.id] != record { changed.append(record) }
+                }
+                self.catalogueReadCount += batch.count
+                self.catalogueTotal = total
+                #if DEBUG
+                self.resourceReadCount += reads
+                #endif
+                await self.publishSnapshot(rebuildGroups: false)
+                if !changed.isEmpty { try await self.index.upsert(changed) }
+                return true
+            }
             guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == authorization, protectedAlbums == protectedAlbumIDs else {
                 isReloading = false
                 await reload(handlingChange: handlingChange)
                 return
             }
-            var refreshed: [String: MediaRecord] = [:]
-            for (_, metadata) in catalogue.assets {
-                refreshed[metadata.id] = records[metadata.id]?.updatingMetadata(from: metadata) ?? metadata
-            }
-            if !selectedIDs.isEmpty {
+            let priorSelection = selectedIDs.intersection(reviewedSelection)
+            if !priorSelection.isEmpty {
                 do {
-                    try DeletionPolicy.validateUnchanged(selectedIDs: selectedIDs, reviewedRecords: Array(records.values),
-                        currentRecords: Array(refreshed.values), groups: exactGroups + similarGroups)
+                    try DeletionPolicy.validateUnchanged(selectedIDs: priorSelection, reviewedRecords: Array(cached.values),
+                        currentRecords: Array(records.values), groups: exactGroups + similarGroups)
                 } catch {
                     selectedIDs.removeAll()
                     notice = LibraryNotice(message: "照片或保留项已变化，待删选择已清空，请重新检查。")
                 }
             }
-            records = refreshed
-            assetResults = catalogue.fetch
-            assetMap = Dictionary(uniqueKeysWithValues: catalogue.assets.map { ($0.0.localIdentifier, $0.0) })
-            albums = catalogue.albums
-            protectedIDs = catalogue.protection
+            assetResults = fetched
             selectedIDs.formIntersection(Set(records.keys))
             selectedIDs.subtract(protectedIDs)
             selectedIDs = selectedIDs.filter { records[$0]?.isFavorite == false }
@@ -482,33 +507,18 @@ final class LibraryStore: ObservableObject {
         let generation = publicationGeneration
         let current = Array(records.values)
         matchingTask?.cancel()
-        snapshot = current.map { record in
-            var display = record
-            display.featurePrint = nil
-            return display
-        }
-        analyzedCount = current.filter { $0.analysisState == .complete }.count
-        pendingCount = current.count - analyzedCount
-        unknownSizeCount = current.filter { $0.originalBytes == nil }.count
-        var counts: [String: Int] = [:]
-        var previews: [String: String] = [:]
-        var screenshots: [String] = [], quality: [String] = []
-        for record in current {
-            if record.isScreenshot { screenshots.append(record.id) }
-            if record.tags.contains("疑似模糊") || record.tags.contains("疑似极暗") { quality.append(record.id) }
-            for tag in Set(record.tags + record.customTags) {
-                counts[tag, default: 0] += 1
-                if previews[tag] == nil { previews[tag] = record.id }
-            }
-        }
-        categories = counts.map { (name: $0.key, count: $0.value) }.sorted {
-            $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count
-        }
-        screenshotCount = screenshots.count
-        qualityCount = quality.count
-        screenshotPreviewIDs = Array(screenshots.prefix(2))
-        qualityPreviewIDs = Array(quality.prefix(2))
-        categoryPreviewIDs = previews
+        let summary = await Task.detached(priority: .userInitiated) { LibrarySnapshot(current) }.value
+        guard generation == publicationGeneration else { return }
+        snapshot = summary.records
+        analyzedCount = summary.analyzed
+        pendingCount = current.count - summary.analyzed
+        unknownSizeCount = summary.unknownSize
+        categories = summary.categories
+        screenshotCount = summary.screenshots.count
+        qualityCount = summary.quality.count
+        screenshotPreviewIDs = Array(summary.screenshots.prefix(2))
+        qualityPreviewIDs = Array(summary.quality.prefix(2))
+        categoryPreviewIDs = summary.previews
         snapshotRevision += 1
         guard rebuildGroups else { return }
         #if DEBUG
@@ -546,7 +556,7 @@ final class LibraryStore: ObservableObject {
 
     @discardableResult
     func stageReview(_ id: String, decision: ReviewDecision) -> Bool {
-        guard !isDeleting, !isSavingFavorites, !isReloading, let record = records[id] else { return false }
+        guard !isDeleting, !isSavingFavorites, canReview, let record = records[id] else { return false }
         switch decision {
         case .delete:
             if !selectedIDs.contains(id) { toggleSelection(id) }
@@ -638,7 +648,7 @@ final class LibraryStore: ObservableObject {
     }
 
     func saveTags(id: String, text: String) async {
-        guard var record = records[id], !isScanning else { return }
+        guard var record = records[id], !isScanning, !isReloading else { return }
         record.customTags = Array(Set(text.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == "\n" })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
         records[id] = record

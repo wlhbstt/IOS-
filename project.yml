@@ -12,8 +12,8 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
-    CURRENT_PROJECT_VERSION: "6"
-    MARKETING_VERSION: "0.3.3"
+    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "0.3.4"
 targets:
   PhotoCleaner:
     type: application
@@ -41,6 +41,7 @@ targets:
     sources:
       - path: AppTests
       - path: App/LocalIndex.swift
+      - path: App/LibrarySnapshot.swift
       - path: App/MediaCompressor.swift
     dependencies:
       - package: PhotoCleanerCore

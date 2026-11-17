@@ -62,6 +62,10 @@ struct LibraryControls: ViewModifier {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { Task { await library.refreshResults() } } label: { Image(systemName: "arrow.clockwise") }
                         .disabled(library.isReloading).accessibilityLabel("刷新扫描结果").help("刷新扫描结果")
+                        .accessibilityIdentifier("library.refresh")
+                        #if DEBUG
+                        .accessibilityValue(String(library.resourceReadCount))
+                        #endif
                     Button { review = true } label: {
                         Label("待确认 \(library.selectedIDs.count + library.pendingFavoriteIDs.count)", systemImage: "tray")
                     }.disabled(library.selectedIDs.isEmpty && library.pendingFavoriteIDs.isEmpty)
@@ -74,7 +78,12 @@ struct LibraryControls: ViewModifier {
                 VStack(spacing: 0) {
                 if library.isScanning || library.isReloading {
                     HStack(spacing: 12) {
-                        if library.isReloading { ProgressView(); Text("正在读取相册") }
+                        if library.isReloading {
+                            ProgressView()
+                            Text(library.catalogueTotal > 0
+                                ? "正在读取 \(library.catalogueReadCount)/\(library.catalogueTotal)" : "正在读取相册")
+                                .accessibilityIdentifier("library.read.progress")
+                        }
                         else {
                             ProgressView(value: Double(library.processed), total: Double(max(1, library.scanTotal)))
                             Text("\(library.processed)/\(library.scanTotal)").font(.caption.monospacedDigit())

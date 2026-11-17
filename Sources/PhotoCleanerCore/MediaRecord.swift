@@ -86,10 +86,14 @@ public struct MediaRecord: Codable, Hashable, Identifiable, Sendable {
         self.analysisState = analysisState
     }
 
+    public func hasSameAssetVersion(as metadata: MediaRecord) -> Bool {
+        id == metadata.id && modifiedAt == metadata.modifiedAt && createdAt == metadata.createdAt
+            && width == metadata.width && height == metadata.height && kind == metadata.kind
+            && isLivePhoto == metadata.isLivePhoto && isScreenshot == metadata.isScreenshot && duration == metadata.duration
+    }
+
     public func updatingMetadata(from metadata: MediaRecord) -> MediaRecord {
-        guard id == metadata.id, modifiedAt == metadata.modifiedAt, createdAt == metadata.createdAt,
-              filename == metadata.filename, width == metadata.width, height == metadata.height,
-              kind == metadata.kind, isComplex == metadata.isComplex, isLivePhoto == metadata.isLivePhoto else {
+        guard hasSameAssetVersion(as: metadata), filename == metadata.filename, isComplex == metadata.isComplex else {
             var fresh = metadata
             fresh.customTags = customTags
             return fresh

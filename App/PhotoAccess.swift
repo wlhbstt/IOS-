@@ -116,9 +116,11 @@ final class PhotoAccess: @unchecked Sendable {
     }
 
     func metadata(_ asset: PHAsset) -> MediaRecord {
-        let resources = PHAssetResource.assetResources(for: asset)
+        metadata(asset, cached: nil).record
+    }
+
+    private func metadata(_ asset: PHAsset, cached: MediaRecord?) -> (record: MediaRecord, resourceRead: Bool) {
         var record = MediaRecord(id: asset.localIdentifier)
-        record.filename = resources.first(where: { $0.type == .photo || $0.type == .video })?.originalFilename ?? ""
         record.createdAt = asset.creationDate
         record.modifiedAt = asset.modificationDate
         record.latitude = asset.location?.coordinate.latitude
@@ -127,14 +129,58 @@ final class PhotoAccess: @unchecked Sendable {
         record.isScreenshot = asset.mediaSubtypes.contains(.photoScreenshot)
         record.isLivePhoto = asset.mediaSubtypes.contains(.photoLive)
         record.isFavorite = asset.isFavorite
-        record.isComplex = resources.count != 1 || resources.first?.type != .photo
         record.width = asset.pixelWidth
         record.height = asset.pixelHeight
         record.duration = asset.duration
         if record.isScreenshot { record.tags = ["截图"] }
         if record.isLivePhoto { record.tags.append("实况照片") }
         if record.kind == .video { record.tags.append("视频") }
-        return record
+        let reusable = cached.map { $0.modifiedAt != nil && !$0.filename.isEmpty && $0.hasSameAssetVersion(as: record) } ?? false
+        if reusable, let cached {
+            record.filename = cached.filename
+            record.isComplex = cached.isComplex
+        } else {
+            let resources = PHAssetResource.assetResources(for: asset)
+            record.filename = resources.first(where: { $0.type == .photo || $0.type == .video })?.originalFilename ?? ""
+            record.isComplex = resources.count != 1 || resources.first?.type != .photo
+        }
+        return (cached?.updatingMetadata(from: record) ?? record, !reusable)
+    }
+
+    func readCatalogue(cached: [String: MediaRecord],
+        receive: @escaping @MainActor @Sendable ([(PHAsset, MediaRecord)], Int, Int) async throws -> Bool
+    ) async throws -> PHFetchResult<PHAsset> {
+        try await Task.detached(priority: .userInitiated) { [self] in
+            let fetch = assets()
+            var offset = 0
+            while offset < fetch.count {
+                try Task.checkCancellation()
+                var size = offset == 0 ? 128 : 1024
+                #if DEBUG
+                let delayed = ProcessInfo.processInfo.arguments.contains("--uitest-stream-catalogue")
+                if delayed && offset == 0 { size = 2 }
+                #endif
+                let end = min(fetch.count, offset + size)
+                let batch = autoreleasepool { () -> (assets: [(PHAsset, MediaRecord)], reads: Int) in
+                    var result: [(PHAsset, MediaRecord)] = []
+                    var reads = 0
+                    for position in offset..<end {
+                        let asset = fetch.object(at: position)
+                        let item = metadata(asset, cached: cached[asset.localIdentifier])
+                        result.append((asset, item.record))
+                        if item.resourceRead { reads += 1 }
+                    }
+                    return (result, reads)
+                }
+                // Await the consumer to keep only one metadata batch in flight.
+                guard try await receive(batch.assets, fetch.count, batch.reads) else { break }
+                #if DEBUG
+                if delayed && offset == 0 { try await Task.sleep(for: .seconds(20)) }
+                #endif
+                offset = end
+            }
+            return fetch
+        }.value
     }
 
     func albums() -> [AlbumChoice] {

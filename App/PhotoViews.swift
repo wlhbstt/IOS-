@@ -224,7 +224,7 @@ struct LibraryOperationProgress: View {
     var identifier = "library.operation.status"
 
     var body: some View {
-        if library.isDeleting || library.isSavingFavorites || library.isReloading {
+        if library.isDeleting || library.isSavingFavorites || (library.isReloading && !library.canReview) {
             VStack(spacing: 12) {
                 ProgressView()
                 Text(library.isDeleting ? library.deletionStatus : library.isSavingFavorites ? "正在保存收藏" : "正在刷新相册")

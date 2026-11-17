@@ -10,6 +10,10 @@ final class LibraryUITests: XCTestCase {
         let reading = app.staticTexts["library.read.progress"]
         XCTAssertTrue(reading.waitForExistence(timeout: 15))
         let count = app.staticTexts["organize.count"]
+        expectation(for: NSPredicate { _, _ in
+            count.value as? String == "2" && reading.exists && app.buttons["review.start"].isEnabled
+        }, evaluatedWith: count)
+        waitForExpectations(timeout: 15)
         XCTAssertEqual(count.value as? String, "2")
         XCTAssertTrue(app.buttons["review.start"].isEnabled)
         app.buttons["review.start"].tap()
