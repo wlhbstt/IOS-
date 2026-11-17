@@ -69,6 +69,10 @@ final class LibraryUITests: XCTestCase {
             if !app.tabBars.buttons["清理"].exists { app.tap() }
         }
         XCTAssertTrue(app.tabBars.buttons["清理"].waitForExistence(timeout: 30))
+        expectation(for: NSPredicate { _, _ in
+            app.buttons["library.refresh"].exists && app.buttons["library.refresh"].isEnabled
+        }, evaluatedWith: app)
+        waitForExpectations(timeout: 30)
         app.tabBars.buttons["清理"].tap()
         let homeReady = app.staticTexts["清理项目"].waitForExistence(timeout: 30)
         if !homeReady {

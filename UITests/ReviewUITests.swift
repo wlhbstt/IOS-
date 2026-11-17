@@ -7,6 +7,7 @@ final class ReviewUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-review.gesture.down", "previous"]
         app.launch()
+        waitForCatalogue(app)
         XCTAssertTrue(app.buttons["review.start"].waitForExistence(timeout: 25))
         app.buttons["review.start"].tap()
         let image = app.images["review.image"].firstMatch
@@ -35,6 +36,7 @@ final class ReviewUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
+        waitForCatalogue(app)
         XCTAssertTrue(app.tabBars.buttons["整理"].waitForExistence(timeout: 20))
         app.tabBars.buttons["整理"].tap()
         let count = app.staticTexts["organize.count"]
@@ -147,7 +149,9 @@ final class ReviewUITests: XCTestCase {
     func testCollectionsDoubleRowsAndCompressionCopy() {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments = ["-library.twoRows", "NO"]
         app.launch()
+        waitForCatalogue(app)
         XCTAssertTrue(app.tabBars.buttons["整理"].waitForExistence(timeout: 20))
         app.tabBars.buttons["整理"].tap()
         let count = app.staticTexts["organize.count"]
@@ -201,6 +205,16 @@ final class ReviewUITests: XCTestCase {
             Int(count.value as? String ?? count.label) == (before ?? 0) + 1
         }, evaluatedWith: count)
         waitForExpectations(timeout: 20)
+    }
+
+    @MainActor
+    private func waitForCatalogue(_ app: XCUIApplication) {
+        let count = app.staticTexts["organize.count"]
+        let refresh = app.buttons["library.refresh"]
+        expectation(for: NSPredicate { _, _ in
+            count.exists && (Int(count.value as? String ?? "") ?? 0) > 0 && refresh.exists && refresh.isEnabled
+        }, evaluatedWith: count)
+        waitForExpectations(timeout: 30)
     }
 
     @MainActor

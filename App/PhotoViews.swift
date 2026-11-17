@@ -137,7 +137,7 @@ struct PhotoDetailView: View {
                 Divider()
                 TextField("标签", text: $tags, axis: .vertical).textFieldStyle(.roundedBorder)
                 Button("保存标签", systemImage: "tag") { Task { await library.saveTags(id: record.id, text: tags) } }
-                    .disabled(library.isScanning)
+                    .disabled(library.isScanning || library.isReloading)
                 if !current.text.isEmpty {
                     Divider()
                     Text("识别文字").font(.headline)
