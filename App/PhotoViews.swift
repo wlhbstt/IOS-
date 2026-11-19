@@ -159,7 +159,9 @@ struct PhotoDetailView: View {
         .navigationTitle(current.filename.isEmpty ? "照片" : current.filename)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("完成") { dismiss() }.accessibilityIdentifier("photo.detail.done")
+            }
             ToolbarItem(placement: .bottomBar) {
                 Button(library.selectedIDs.contains(record.id) ? "取消待删" : "加入待删", systemImage: "trash") {
                     library.toggleSelection(record.id)

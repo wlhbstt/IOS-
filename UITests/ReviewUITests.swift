@@ -31,8 +31,8 @@ final class ReviewUITests: XCTestCase {
         copy.tap()
         XCTAssertTrue(app.staticTexts["已另存副本"].waitForExistence(timeout: 35))
         app.buttons["好"].tap()
-        app.navigationBars.buttons["完成"].tap()
-        app.navigationBars.buttons["完成"].tap()
+        app.buttons["photo.detail.done"].tap()
+        app.buttons["review.done"].tap()
         expectation(for: NSPredicate { _, _ in
             Int(count.value as? String ?? "") == (before ?? 0) + 1
         }, evaluatedWith: count)

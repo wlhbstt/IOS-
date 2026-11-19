@@ -94,7 +94,9 @@ struct SwipeReviewView: View {
         .disabled(busy)
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } }
+            ToolbarItem(placement: .cancellationAction) {
+                Button("完成") { dismiss() }.accessibilityIdentifier("review.done")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { settings = true } label: { Image(systemName: "slider.horizontal.3") }
                     .accessibilityLabel("手势设置")
