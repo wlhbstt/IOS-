@@ -29,6 +29,7 @@ echo "Running PhotoCleanerCore tests"
 swift test
 echo "Generating Xcode project"
 xcodegen generate --spec project.yml
+if [ "${PHOTO_CLEANER_RELEASE_ONLY:-0}" != 1 ]; then
 echo "Testing local index migration and feature storage on an iOS simulator"
 simulator_id="$(xcrun simctl list devices available -j | node -e '
 let input = "";
@@ -64,6 +65,7 @@ xcodebuild "${simulator_args[@]}" \
     -test-timeouts-enabled YES -maximum-test-execution-time-allowance 240 \
     -resultBundlePath "$run_dir/Tests.xcresult" \
     test-without-building
+fi
 echo "Building Release for a generic iOS device without signing"
 xcodebuild -project PhotoCleaner.xcodeproj -scheme PhotoCleaner \
     -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \

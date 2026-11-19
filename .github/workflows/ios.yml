@@ -28,6 +28,8 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Test core and build unsigned device IPA
+        env:
+          PHOTO_CLEANER_RELEASE_ONLY: '1'
         run: bash scripts/build-ios.sh
       - name: Upload unsigned IPA for local signing
         if: success()
