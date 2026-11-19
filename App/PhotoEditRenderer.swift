@@ -5,7 +5,8 @@ import UIKit
 import Vision
 
 enum FilterGroup: String, CaseIterable, Identifiable {
-    case everyday = "日常", portrait = "人像", scenery = "风景", film = "胶片", cinema = "电影", mono = "黑白"
+    case everyday = "日常", portrait = "人像", food = "美食", classic = "经典", scenery = "风景", night = "夜景"
+    case street = "街拍", airy = "清透", film = "胶片", cinema = "电影", mono = "黑白"
     var id: Self { self }
 }
 
@@ -16,8 +17,31 @@ enum EditFilter: String, CaseIterable, Codable, Identifiable, Sendable {
     case film, faded, slide, print, sepia
     case cinema, amber, night, noirBlue, mute
     case mono, silver, graphite, matte, highKey
+    case foodWarm, foodFresh, coffee, dessert, banquet, market, tea, grilled
+    case neon, blueHour, cityLights, tungsten, moonlight, dusk, nightRain, candle
+    case urban, concrete, brick, crosswalk, afterRain, metro, newsprint, streetGold
+    case airyWhite, mist, sakura, seaGlass, creamSky, linen, spring, sugar
+    case classicChrome, classicFade, classicInstant, classicMono, classicNoir, classicProcess, classicTonal, classicTransfer
 
     var id: Self { self }
+
+    static func options(in group: FilterGroup) -> [Self] {
+        [.original] + allCases.filter { $0 != .original && $0.look.group == group }
+    }
+
+    var systemEffect: String? {
+        switch self {
+        case .classicChrome: return "CIPhotoEffectChrome"
+        case .classicFade: return "CIPhotoEffectFade"
+        case .classicInstant: return "CIPhotoEffectInstant"
+        case .classicMono: return "CIPhotoEffectMono"
+        case .classicNoir: return "CIPhotoEffectNoir"
+        case .classicProcess: return "CIPhotoEffectProcess"
+        case .classicTonal: return "CIPhotoEffectTonal"
+        case .classicTransfer: return "CIPhotoEffectTransfer"
+        default: return nil
+        }
+    }
 
     // Saturation delta, exposure EV, color temperature shift, contrast delta, sepia.
     typealias Look = (title: String, group: FilterGroup, saturation: Float, exposure: Float,
@@ -56,6 +80,46 @@ enum EditFilter: String, CaseIterable, Codable, Identifiable, Sendable {
         case .graphite: return ("石墨", .mono, -1, -0.33, 0, 0.38, 0)
         case .matte: return ("哑光黑白", .mono, -1, 0.03, 0, -0.22, 0)
         case .highKey: return ("高调黑白", .mono, -1, 0.36, 0, 0.15, 0)
+        case .foodWarm: return ("暖桌", .food, 0.30, 0.14, -560, 0.14, 0)
+        case .foodFresh: return ("鲜果", .food, 0.42, 0.19, 240, 0.08, 0)
+        case .coffee: return ("咖啡馆", .food, -0.19, -0.09, -1020, 0.16, 0.32)
+        case .dessert: return ("甜点", .food, 0.11, 0.31, -280, -0.18, 0.06)
+        case .banquet: return ("晚餐", .food, 0.23, 0.29, 950, 0.12, 0)
+        case .market: return ("市集", .food, 0.47, -0.06, -330, 0.24, 0)
+        case .tea: return ("茶席", .food, -0.28, 0.25, 720, -0.10, 0.10)
+        case .grilled: return ("炙烤", .food, 0.21, -0.19, -1380, 0.34, 0.13)
+        case .neon: return ("霓虹", .night, 0.38, -0.16, 710, 0.37, 0)
+        case .blueHour: return ("蓝调时刻", .night, 0.03, 0.24, 1580, 0.15, 0)
+        case .cityLights: return ("城市灯火", .night, 0.25, 0.30, -460, 0.19, 0.04)
+        case .tungsten: return ("灯光校色", .night, -0.16, 0.12, 2020, 0.22, 0)
+        case .moonlight: return ("月光", .night, -0.78, 0.13, 1250, 0.08, 0)
+        case .dusk: return ("暮色", .night, -0.25, -0.19, 520, 0.31, 0.21)
+        case .nightRain: return ("雨夜", .night, -0.38, -0.06, 1480, -0.11, 0)
+        case .candle: return ("烛光", .night, 0.07, 0.10, -1610, -0.07, 0.26)
+        case .urban: return ("都市", .street, -0.23, -0.06, 450, 0.29, 0)
+        case .concrete: return ("水泥灰", .street, -0.71, 0.18, 0, 0.10, 0)
+        case .brick: return ("红砖", .street, 0.19, -0.13, -940, 0.25, 0.12)
+        case .crosswalk: return ("斑马线", .street, -1, 0.08, 0, 0.46, 0)
+        case .afterRain: return ("雨后", .street, 0.29, 0.11, 1020, 0.21, 0)
+        case .metro: return ("地铁", .street, -0.42, -0.22, 940, 0.32, 0.08)
+        case .newsprint: return ("报纸", .street, -1, 0.18, 0, -0.14, 0.35)
+        case .streetGold: return ("午后街道", .street, 0.07, 0.26, -1190, 0.08, 0.17)
+        case .airyWhite: return ("亮白", .airy, -0.24, 0.38, 160, -0.12, 0)
+        case .mist: return ("薄雾", .airy, -0.39, 0.23, 930, -0.29, 0.05)
+        case .sakura: return ("樱色", .airy, 0.13, 0.32, -620, -0.17, 0.12)
+        case .seaGlass: return ("海玻璃", .airy, 0.17, 0.24, 1510, -0.18, 0)
+        case .creamSky: return ("奶油天空", .airy, -0.10, 0.34, -790, -0.23, 0.21)
+        case .linen: return ("亚麻", .airy, -0.43, 0.17, -340, -0.20, 0.29)
+        case .spring: return ("春日", .airy, 0.28, 0.28, 430, -0.09, 0)
+        case .sugar: return ("淡彩", .airy, 0.24, 0.16, -210, -0.33, 0.09)
+        case .classicChrome: return ("浓彩", .classic, 0, 0, 0, 0, 0)
+        case .classicFade: return ("淡褪", .classic, 0, 0, 0, 0, 0)
+        case .classicInstant: return ("即时相片", .classic, 0, 0, 0, 0, 0)
+        case .classicMono: return ("单色", .classic, 0, 0, 0, 0, 0)
+        case .classicNoir: return ("黑色电影", .classic, 0, 0, 0, 0, 0)
+        case .classicProcess: return ("交叉冲洗", .classic, 0, 0, 0, 0, 0)
+        case .classicTonal: return ("灰阶", .classic, 0, 0, 0, 0, 0)
+        case .classicTransfer: return ("转印", .classic, 0, 0, 0, 0, 0)
         }
     }
 }
@@ -183,6 +247,12 @@ final class PhotoEditRenderer: @unchecked Sendable {
 
     private func applyFilter(_ filter: EditFilter, strength: Double, to input: CIImage) -> CIImage {
         guard filter != .original, strength > 0 else { return input }
+        if let effect = filter.systemEffect {
+            let styled = input.applyingFilter(effect)
+            return input.applyingFilter("CIDissolveTransition", parameters: [
+                kCIInputTargetImageKey: styled, kCIInputTimeKey: strength
+            ]).cropped(to: input.extent)
+        }
         let look = filter.look
         let saturationValue = 1 + Float(strength) * look.saturation
         let exposureValue = Float(strength) * look.exposure

@@ -24,7 +24,17 @@ final class ReviewUITests: XCTestCase {
         XCTAssertTrue(warm.waitForExistence(timeout: 10))
         expectation(for: NSPredicate(format: "value == %@", "预览已生成"), evaluatedWith: warm)
         waitForExpectations(timeout: 15)
-        warm.tap()
+        app.buttons["美食"].tap()
+        let coffee = app.buttons["photo.editor.filter.coffee"]
+        XCTAssertTrue(coffee.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "预览已生成"), evaluatedWith: coffee)
+        waitForExpectations(timeout: 15)
+        app.buttons["经典"].tap()
+        let chrome = app.buttons["photo.editor.filter.classicChrome"]
+        XCTAssertTrue(chrome.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "预览已生成"), evaluatedWith: chrome)
+        waitForExpectations(timeout: 15)
+        chrome.tap()
         capture("21-photo-editor-filters")
         app.buttons["photo.editor.save"].tap()
         let copy = app.buttons["另存副本"]

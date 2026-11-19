@@ -209,7 +209,7 @@ struct PhotoEditorView: View {
             }.scrollIndicators(.hidden)
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
-                    ForEach([EditFilter.original] + EditFilter.allCases.filter { $0 != .original && $0.look.group == group }) { item in
+                    ForEach(EditFilter.options(in: group)) { item in
                         Button { change { $0.filter = item } } label: {
                             VStack(spacing: 4) {
                                 ZStack {
@@ -298,7 +298,7 @@ struct PhotoEditorView: View {
     private func prepareThumbnails() async {
         guard tool == .filters, let source, let renderer else { return }
         let size = source.fitted(longEdge: 128)
-        let items = [EditFilter.original] + EditFilter.allCases.filter { $0 != .original && $0.look.group == group }
+        let items = EditFilter.options(in: group)
         for item in items where thumbnails[item] == nil {
             guard !Task.isCancelled else { return }
             let thumbnail = try? await Task.detached(priority: .utility) {
