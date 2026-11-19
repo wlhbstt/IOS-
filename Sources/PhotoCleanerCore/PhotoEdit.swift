@@ -29,12 +29,12 @@ public struct EditEnhancement: Codable, Equatable, Sendable {
     public init() {}
 
     public static func suggest(brightness: Double, portrait: Bool) -> Self {
-        let dark = max(0, 0.52 - brightness)
+        let dark = max(0, 0.64 - brightness)
         var result = Self()
-        result.exposure = min(0.65, dark * (portrait ? 1.7 : 1.3))
-        result.shadows = min(0.8, dark * (portrait ? 1.9 : 1.35))
+        result.exposure = min(0.65, dark * (portrait ? 1.9 : 1.5))
+        result.shadows = min(0.8, dark * (portrait ? 2.3 : 1.9))
         result.highlights = -min(0.25, max(0, brightness - 0.60) * 0.8)
-        result.saturation = portrait ? 0.015 : 0.08
+        result.saturation = portrait ? 0.06 : 0.16
         return result
     }
 

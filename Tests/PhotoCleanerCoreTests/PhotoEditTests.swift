@@ -21,4 +21,18 @@ final class PhotoEditTests: XCTestCase {
         XCTAssertEqual(low.at(strength: 0), .init())
         XCTAssertEqual(low.at(strength: 2), low)
     }
+
+    func testOneTapEnhancementLiftsMidtonesAndProtectsBrightPhotos() {
+        let portrait = EditEnhancement.suggest(brightness: 0.50, portrait: true)
+        let scene = EditEnhancement.suggest(brightness: 0.50, portrait: false)
+        let bright = EditEnhancement.suggest(brightness: 0.82, portrait: false)
+        XCTAssertGreaterThanOrEqual(portrait.exposure, 0.25)
+        XCTAssertGreaterThanOrEqual(scene.exposure, 0.18)
+        XCTAssertGreaterThanOrEqual(scene.shadows, 0.25)
+        XCTAssertGreaterThanOrEqual(scene.saturation, 0.12)
+        XCTAssertLessThan(portrait.saturation, scene.saturation)
+        XCTAssertEqual(bright.exposure, 0)
+        XCTAssertEqual(bright.shadows, 0)
+        XCTAssertLessThan(bright.highlights, 0)
+    }
 }

@@ -70,7 +70,7 @@ struct PhotoEdits: Codable, Equatable, Sendable {
     var filter = EditFilter.original
     var intensity = 0.8
     var enhancement: EditEnhancement?
-    var enhancementStrength = 0.7
+    var enhancementStrength = 0.9
     var adjustments: [String: Double] = [:]
     var aspect = EditAspect.original
     var turns = 0
