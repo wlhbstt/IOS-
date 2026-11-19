@@ -96,7 +96,7 @@ actor ImageAnalyzer {
     }
 }
 
-private extension UIImage.Orientation {
+extension UIImage.Orientation {
     var cgOrientation: CGImagePropertyOrientation {
         switch self {
         case .up: return .up

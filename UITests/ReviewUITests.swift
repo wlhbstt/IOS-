@@ -2,6 +2,44 @@ import XCTest
 
 final class ReviewUITests: XCTestCase {
     @MainActor
+    func testPhotoEditorFiltersAndSaveCopy() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        waitForCatalogue(app)
+        let count = app.staticTexts["organize.count"]
+        let before = Int(count.value as? String ?? "")
+        XCTAssertNotNil(before)
+        app.buttons["review.start"].tap()
+        let detail = app.buttons["照片详情"]
+        XCTAssertTrue(detail.waitForExistence(timeout: 15))
+        detail.tap()
+        let edit = app.buttons["photo.editor.open"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 15))
+        if !edit.isHittable { app.swipeUp() }
+        edit.tap()
+        XCTAssertTrue(app.images["photo.editor.preview"].waitForExistence(timeout: 20))
+        app.buttons["滤镜"].tap()
+        let warm = app.buttons["photo.editor.filter.warm"]
+        XCTAssertTrue(warm.waitForExistence(timeout: 10))
+        warm.tap()
+        capture("21-photo-editor-filters")
+        app.buttons["photo.editor.save"].tap()
+        let copy = app.buttons["另存副本"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["保存到原图"].exists)
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["已另存副本"].waitForExistence(timeout: 35))
+        app.buttons["好"].tap()
+        app.navigationBars.buttons["完成"].tap()
+        app.navigationBars.buttons["完成"].tap()
+        expectation(for: NSPredicate { _, _ in
+            Int(count.value as? String ?? "") == (before ?? 0) + 1
+        }, evaluatedWith: count)
+        waitForExpectations(timeout: 20)
+    }
+
+    @MainActor
     func testPreviousGestureRestoresStagedDeletion() {
         continueAfterFailure = false
         let app = XCUIApplication()

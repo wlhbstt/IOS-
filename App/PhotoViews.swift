@@ -103,6 +103,10 @@ struct PhotoDetailView: View {
     @State private var tagsInitialized = false
     @State private var loading = true
     @State private var failed = false
+    @State private var editing = false
+    @State private var confirmUnstage = false
+    @State private var saveNotice: String?
+    @State private var editRevision = 0
 
     private var current: MediaRecord { library.record(record.id) ?? record }
 
@@ -124,6 +128,13 @@ struct PhotoDetailView: View {
                 if current.kind == .image && !fullResolution {
                     Button("原尺寸预览", systemImage: "arrow.up.left.and.arrow.down.right") { fullResolution = true }
                         .buttonStyle(.bordered)
+                }
+                if current.kind == .image {
+                    Button("编辑照片", systemImage: "slider.horizontal.3") {
+                        if library.selectedIDs.contains(record.id) { confirmUnstage = true }
+                        else { editing = true }
+                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("photo.editor.open")
+                        .disabled(!library.canReview || library.isDeleting || library.isSavingFavorites)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent("原文件大小", value: mediaSize(current.originalBytes))
@@ -155,7 +166,22 @@ struct PhotoDetailView: View {
                 }.disabled(library.isProtected(record.id))
             }
         }
-        .task(id: "\(download):\(fullResolution)") {
+        .confirmationDialog("这张照片已加入待删", isPresented: $confirmUnstage, titleVisibility: .visible) {
+            Button("移出待删并编辑") { library.selectedIDs.remove(record.id); editing = true }
+            Button("取消", role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $editing) {
+            NavigationStack {
+                PhotoEditorView(record: current) { copy in
+                    if !copy { editRevision += 1 }
+                    saveNotice = copy ? "已另存副本" : "已保存到原图"
+                }
+            }
+        }
+        .alert("照片编辑", isPresented: Binding(get: { saveNotice != nil && !editing }, set: { if !$0 { saveNotice = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: { Text(saveNotice ?? "") }
+        .task(id: "\(download):\(fullResolution):\(editRevision)") {
             if !tagsInitialized {
                 tags = current.customTags.joined(separator: "，")
                 tagsInitialized = true

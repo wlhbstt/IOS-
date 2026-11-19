@@ -18,7 +18,7 @@ enum PhotoAccessError: LocalizedError {
 }
 
 // PhotoKit may finish synchronously, emit multiple image callbacks, or be cancelled.
-private final class PhotoRequest<Value>: @unchecked Sendable {
+final class PhotoRequest<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Value, Error>?
     private var result: Result<Value, Error>?
