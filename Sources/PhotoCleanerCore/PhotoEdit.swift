@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 public enum EditAspect: String, Codable, CaseIterable, Sendable {
     case original, square, landscape, portrait
