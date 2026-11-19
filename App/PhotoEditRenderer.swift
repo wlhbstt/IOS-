@@ -91,7 +91,11 @@ struct PhotoEdits: Codable, Equatable, Sendable {
 // Rendering contexts are thread-safe. Mutable filters belong to one invocation.
 final class PhotoEditRenderer: @unchecked Sendable {
     private let ci = CIContext(options: [.cacheIntermediates: false])
+    #if targetEnvironment(simulator)
+    private let metal: MTIContext? = nil
+    #else
     private let metal = MTLCreateSystemDefaultDevice().flatMap { try? MTIContext(device: $0) }
+    #endif
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
     func enhance(_ input: CIImage) throws -> EditEnhancement {
@@ -189,7 +193,7 @@ final class PhotoEditRenderer: @unchecked Sendable {
         let look = filter.look
         let saturationValue = 1 + Float(strength) * look.saturation
         let exposureValue = Float(strength) * look.exposure
-        var result: CIImage
+        var rendered: CIImage?
         if let metal {
             let saturation = MTISaturationFilter()
             saturation.inputImage = MTIImage(ciImage: input.atOrigin())
@@ -197,13 +201,13 @@ final class PhotoEditRenderer: @unchecked Sendable {
             let exposure = MTIExposureFilter()
             exposure.exposure = exposureValue
             exposure.inputImage = saturation.outputImage
-            guard let output = exposure.outputImage else { throw PhotoEditError.render }
-            result = try metal.makeCIImage(from: output)
-        } else {
-            result = input.atOrigin()
-                .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: saturationValue])
-                .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: exposureValue])
+            if let output = exposure.outputImage, let image = try? metal.makeCGImage(from: output, colorSpace: colorSpace) {
+                rendered = CIImage(cgImage: image)
+            }
         }
+        var result = rendered ?? input.atOrigin()
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: saturationValue])
+            .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: exposureValue])
         if look.tint != 0 {
             result = result.applyingFilter("CITemperatureAndTint", parameters: [
                 "inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 + strength * look.tint, y: 0)
