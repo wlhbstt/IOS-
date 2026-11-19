@@ -135,7 +135,7 @@ struct PhotoEditorView: View {
                 preview = UIImage(cgImage: rendered)
             } catch is CancellationError {} catch { if !Task.isCancelled { message = error.localizedDescription } }
         }
-        .task(id: tool == .filters ? group : nil) { await prepareThumbnails() }
+        .task(id: tool == .filters && source != nil ? group : nil) { await prepareThumbnails() }
     }
 
     private var stage: some View {
@@ -222,7 +222,10 @@ struct PhotoEditorView: View {
                                     .overlay { RoundedRectangle(cornerRadius: 5).strokeBorder(edits.filter == item ? LibraryStyle.accent : .clear, lineWidth: 2) }
                                 Text(item.look.title).font(.caption2).lineLimit(1)
                             }.frame(width: 60)
-                        }.buttonStyle(.plain).accessibilityIdentifier("photo.editor.filter.\(item.rawValue)")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityValue(thumbnails[item] == nil ? "" : "预览已生成")
+                        .accessibilityIdentifier("photo.editor.filter.\(item.rawValue)")
                     }
                 }
             }.scrollIndicators(.hidden)

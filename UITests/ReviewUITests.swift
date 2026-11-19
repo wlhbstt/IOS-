@@ -22,6 +22,8 @@ final class ReviewUITests: XCTestCase {
         app.buttons["滤镜"].tap()
         let warm = app.buttons["photo.editor.filter.warm"]
         XCTAssertTrue(warm.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value == %@", "预览已生成"), evaluatedWith: warm)
+        waitForExpectations(timeout: 15)
         warm.tap()
         capture("21-photo-editor-filters")
         app.buttons["photo.editor.save"].tap()

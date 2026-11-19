@@ -1,7 +1,5 @@
 import CoreImage
 import ImageIO
-import Metal
-import MetalPetal
 import PhotoCleanerCore
 import UIKit
 import Vision
@@ -91,11 +89,6 @@ struct PhotoEdits: Codable, Equatable, Sendable {
 // Rendering contexts are thread-safe. Mutable filters belong to one invocation.
 final class PhotoEditRenderer: @unchecked Sendable {
     private let ci = CIContext(options: [.cacheIntermediates: false])
-    #if targetEnvironment(simulator)
-    private let metal: MTIContext? = nil
-    #else
-    private let metal = MTLCreateSystemDefaultDevice().flatMap { try? MTIContext(device: $0) }
-    #endif
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
     func enhance(_ input: CIImage) throws -> EditEnhancement {
@@ -165,7 +158,7 @@ final class PhotoEditRenderer: @unchecked Sendable {
                 "inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 - amount(.warmth) * 2100, y: 0)
             ])
         }
-        result = try applyFilter(edits.filter, strength: edits.intensity, to: result)
+        result = applyFilter(edits.filter, strength: edits.intensity, to: result)
         if edits.background != .original, let mask {
             let fit = mask.atOrigin().transformed(by: CGAffineTransform(scaleX: bounds.width / mask.extent.width,
                                                                        y: bounds.height / mask.extent.height))
@@ -188,24 +181,12 @@ final class PhotoEditRenderer: @unchecked Sendable {
         return result.cropped(to: crop.integral.intersection(result.extent)).atOrigin()
     }
 
-    private func applyFilter(_ filter: EditFilter, strength: Double, to input: CIImage) throws -> CIImage {
+    private func applyFilter(_ filter: EditFilter, strength: Double, to input: CIImage) -> CIImage {
         guard filter != .original, strength > 0 else { return input }
         let look = filter.look
         let saturationValue = 1 + Float(strength) * look.saturation
         let exposureValue = Float(strength) * look.exposure
-        var rendered: CIImage?
-        if let metal {
-            let saturation = MTISaturationFilter()
-            saturation.inputImage = MTIImage(ciImage: input.atOrigin())
-            saturation.saturation = saturationValue
-            let exposure = MTIExposureFilter()
-            exposure.exposure = exposureValue
-            exposure.inputImage = saturation.outputImage
-            if let output = exposure.outputImage, let image = try? metal.makeCGImage(from: output, colorSpace: colorSpace) {
-                rendered = CIImage(cgImage: image)
-            }
-        }
-        var result = rendered ?? input.atOrigin()
+        var result = input
             .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: saturationValue])
             .applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: exposureValue])
         if look.tint != 0 {
@@ -217,7 +198,7 @@ final class PhotoEditRenderer: @unchecked Sendable {
             result = result.applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: 1 + strength * look.contrast])
         }
         if look.sepia != 0 { result = result.applyingFilter("CISepiaTone", parameters: [kCIInputIntensityKey: strength * look.sepia]) }
-        return result.transformed(by: CGAffineTransform(translationX: input.extent.minX, y: input.extent.minY)).cropped(to: input.extent)
+        return result.cropped(to: input.extent)
     }
 }
 
